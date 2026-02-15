@@ -54,6 +54,16 @@ def test_migrar_gastos_todos_importados(migrated_db):
     mile_count = conn.execute("SELECT COUNT(*) as c FROM gastos WHERE pagado_por LIKE '%MILE%'").fetchone()['c']
     assert mile_count == 0, "Aún hay referencias a MILE en gastos"
 
+    # No references to ORVANN (v1.5: solo JP, KATHE, ANDRES son pagadores válidos)
+    orvann_count = conn.execute("SELECT COUNT(*) as c FROM gastos WHERE pagado_por = 'ORVANN'").fetchone()['c']
+    assert orvann_count == 0, f"Hay {orvann_count} gastos con pagado_por='ORVANN' (debe ser un socio válido)"
+
+    # Solo socios válidos
+    invalid = conn.execute(
+        "SELECT COUNT(*) as c FROM gastos WHERE pagado_por NOT IN ('JP', 'KATHE', 'ANDRES')"
+    ).fetchone()['c']
+    assert invalid == 0, f"Hay {invalid} gastos con pagado_por inválido"
+
     conn.close()
 
 

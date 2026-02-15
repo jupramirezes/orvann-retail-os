@@ -1,4 +1,4 @@
-"""Tests para la logica de negocio ORVANN. v1.3"""
+"""Tests para la logica de negocio ORVANN. v1.5"""
 import sqlite3
 import pytest
 from datetime import date
@@ -45,6 +45,9 @@ from app.models import (
     get_creditos_pendientes,
     registrar_abono,
     registrar_pago_credito,
+    # v1.4 — Undo operations
+    reabrir_caja,
+    editar_venta,
 )
 from app.database import execute, query
 
@@ -814,3 +817,162 @@ def test_pago_completo_llena_monto_pagado(db_with_data):
     paid = query("SELECT * FROM creditos_clientes WHERE id = ?", (cid,), db_path=db)
     assert paid[0]['pagado'] == 1
     assert paid[0]['monto_pagado'] == 75000
+
+
+# ── Tests v1.4 — Editar venta ──────────────────────────────
+
+def test_editar_venta_precio(db_with_data):
+    """Editar precio de venta recalcula total."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 2, 75000, 'Efectivo', vendedor='JP', db_path=db)
+
+    # Verificar total original: 2 * 75000 = 150000
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['total'] == pytest.approx(150000)
+
+    # Cambiar precio a 80000 → nuevo total = 2 * 80000 = 160000
+    editar_venta(vid, precio=80000, db_path=db)
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['precio_unitario'] == 80000
+    assert ventas[0]['total'] == pytest.approx(160000)
+
+
+def test_editar_venta_metodo(db_with_data):
+    """Editar método de pago sin afectar total."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+
+    editar_venta(vid, metodo_pago='Transferencia', db_path=db)
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['metodo_pago'] == 'Transferencia'
+    assert ventas[0]['total'] == pytest.approx(75000)  # Sin cambio
+
+
+def test_editar_venta_vendedor(db_with_data):
+    """Editar vendedor de una venta."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+
+    editar_venta(vid, vendedor='KATHE', db_path=db)
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['vendedor'] == 'KATHE'
+
+
+def test_editar_venta_sin_campos(db_with_data):
+    """Editar venta sin campos no hace nada."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+
+    editar_venta(vid, db_path=db)  # Sin campos
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['precio_unitario'] == 75000
+    assert ventas[0]['metodo_pago'] == 'Efectivo'
+    assert ventas[0]['vendedor'] == 'JP'
+
+
+# ── Tests v1.4 — Reabrir caja ──────────────────────────────
+
+def test_reabrir_caja(db_with_data):
+    """Reabrir caja limpia cierre pero mantiene apertura."""
+    db = db_with_data
+    hoy = date.today().isoformat()
+
+    # Abrir y cerrar caja
+    abrir_caja(fecha=hoy, efectivo_inicio=100000, db_path=db)
+    registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+    cerrar_caja(fecha=hoy, efectivo_real=175000, db_path=db)
+
+    # Verificar cerrada
+    estado = get_estado_caja(fecha=hoy, db_path=db)
+    assert estado['cerrada'] == 1
+    assert estado['efectivo_cierre_real'] == 175000
+
+    # Reabrir
+    reabrir_caja(fecha=hoy, db_path=db)
+
+    # Verificar reabierta
+    estado = get_estado_caja(fecha=hoy, db_path=db)
+    assert estado['cerrada'] == 0
+    assert estado['efectivo_cierre_real'] is None
+    # Apertura se mantiene
+    assert estado['efectivo_inicio'] == 100000
+    assert estado['caja_abierta'] is True
+
+
+# ── Tests v1.4 — Venta a crédito requiere cliente ──────────
+
+def test_venta_credito_sin_cliente_falla(db_with_data):
+    """Venta a crédito sin cliente debe fallar."""
+    db = db_with_data
+    with pytest.raises(ValueError, match="crédito requiere"):
+        registrar_venta('CAM-TEST-S', 1, 75000, 'Crédito', cliente=None,
+                        vendedor='JP', db_path=db)
+
+
+def test_venta_credito_con_cliente(db_with_data):
+    """Venta a crédito con cliente se registra correctamente."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Crédito',
+                          cliente='Diana', vendedor='KATHE', db_path=db)
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['metodo_pago'] == 'Crédito'
+    assert ventas[0]['cliente'] == 'Diana'
+
+    creditos = query("SELECT * FROM creditos_clientes WHERE venta_id = ?", (vid,), db_path=db)
+    assert len(creditos) == 1
+    assert creditos[0]['cliente'] == 'Diana'
+
+
+# ── Tests v1.5 — CHECK constraints en BD ────────────────────
+
+def test_constraint_stock_no_negativo(db_path):
+    """Stock no puede ser negativo (CHECK constraint)."""
+    with pytest.raises(Exception):
+        crear_producto(
+            sku='BAD-STOCK', nombre='Bad', categoria='Test',
+            talla='S', color='X', costo=1000, precio_venta=2000,
+            stock=-5, db_path=db_path,
+        )
+
+
+def test_constraint_precio_no_negativo(db_path):
+    """Precio de venta no puede ser negativo."""
+    with pytest.raises(Exception):
+        crear_producto(
+            sku='BAD-PRICE', nombre='Bad', categoria='Test',
+            talla='S', color='X', costo=1000, precio_venta=-500,
+            stock=5, db_path=db_path,
+        )
+
+
+def test_constraint_gasto_monto_positivo(db_with_data):
+    """Monto de gasto debe ser mayor a 0."""
+    db = db_with_data
+    with pytest.raises(Exception):
+        registrar_gasto(
+            fecha='2026-02-15', categoria='Test', monto=0,
+            descripcion='Monto cero', pagado_por='JP', db_path=db,
+        )
+
+
+def test_constraint_gasto_pagador_valido(db_with_data):
+    """Pagador de gasto debe ser JP, KATHE o ANDRES."""
+    db = db_with_data
+    with pytest.raises(Exception):
+        registrar_gasto(
+            fecha='2026-02-15', categoria='Test', monto=5000,
+            descripcion='Pagador inválido', pagado_por='ORVANN', db_path=db,
+        )
+
+
+def test_constraint_metodo_pago_valido(db_with_data):
+    """Método de pago debe ser uno de los válidos."""
+    db = db_with_data
+    with pytest.raises(Exception):
+        registrar_venta('CAM-TEST-S', 1, 75000, 'Bitcoin',
+                        vendedor='JP', db_path=db)

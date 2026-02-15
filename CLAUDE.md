@@ -1,4 +1,4 @@
-# ORVANN Retail OS — Documento Maestro (v1.3)
+# ORVANN Retail OS — Documento Maestro (v1.5)
 
 ## Que es
 
@@ -44,7 +44,7 @@ Variable de entorno requerida: `DATABASE_URL` (provista por Railway PostgreSQL a
 
 ### Tests
 ```bash
-python -m pytest tests/ -v        # 55 tests (siempre usan SQLite temporal)
+python -m pytest tests/ -v        # 67 tests (siempre usan SQLite temporal)
 ```
 
 ## Backend de Datos (database.py)
@@ -159,12 +159,12 @@ Funciones clave:
 - Abrir caja con monto inicial
 - Buscar producto por nombre (solo muestra con stock > 0)
 - Precio auto-llenado, cantidad, metodo pago, vendedor
-- Campo cliente solo si metodo = Credito
+- Campo cliente siempre visible (requerido si credito)
 - Boton muestra total: "REGISTRAR VENTA — $75,000"
 - Tabla compacta: Hora | Producto | Total | M (1 letra) | Quien
-- Anular venta (expander)
+- Anular venta (expander con confirmacion doble paso)
 - Gasto rapido (expander)
-- Cerrar caja (expander)
+- Cerrar caja (expander) / Reabrir caja si ya cerrada
 
 ### Dashboard — metricas esenciales
 - Punto de equilibrio (barra de progreso + meta diaria)
@@ -180,6 +180,8 @@ Funciones clave:
 
 ### Historial
 - Ventas y gastos historicos con filtros por fecha/metodo/socio
+- Grafico Altair de ventas por dia (color ORVANN dorado, tooltips)
+- Tablas formateadas (fechas cortas, montos COP, None limpiado)
 - Exportar a Excel
 
 ### Admin (5 tabs)
@@ -203,13 +205,15 @@ El usuario puede editar el SKU antes de confirmar.
 ## Funciones del Modelo (models.py)
 
 ### Ventas
-- `registrar_venta()` — Descuenta stock, soporta descuento % y notas
-- `anular_venta()` — Devuelve stock, elimina credito
+- `registrar_venta()` — Descuenta stock, soporta descuento % y notas. Dual SQLite/PostgreSQL.
+- `anular_venta()` — Devuelve stock, elimina credito. Backend-agnostic.
+- `editar_venta()` — Cambia precio/metodo/vendedor. Recalcula total si cambia precio.
 - `get_ventas_dia()`, `get_ventas_mes()`, `get_ventas_semana()`, `get_ventas_rango()`
 
 ### Caja
 - `abrir_caja()` — Registra monto inicial, idempotente
 - `cerrar_caja()` — Calcula diferencia esperado vs real
+- `reabrir_caja()` — Reabre caja cerrada (borra cierre, mantiene apertura)
 - `get_estado_caja()` — Incluye campo `caja_abierta`
 
 ### Gastos
@@ -291,6 +295,27 @@ El usuario puede editar el SKU antes de confirmar.
 - [x] Sync Excel → BD — scripts/sync_excel.py (gastos, costos fijos, precios) idempotente
 - [x] 55 tests pasando
 
+### Hecho (v1.4 — Visual Fix + Hardening)
+- [x] CSS critico arreglado — inputs legibles, boton dorado, alertas legibles, charts fondo blanco
+- [x] Tablas mejoradas — zebra striping, Glide Data Grid override, fechas formateadas
+- [x] Bug credito arreglado — campo cliente siempre visible (Streamlit server-side render)
+- [x] Vendedor None corregido — migracion v1.4 fija ventas sin vendedor → JP
+- [x] PostgreSQL hardening — eliminado conn.execute() con ?, todo via adapt_sql() + query()/execute()
+- [x] Graficas Altair — color dorado ORVANN, tooltips, fondo blanco, ejes formateados
+- [x] Reabrir caja — expander para reabrir caja cerrada
+- [x] Editar venta — cambiar precio/metodo/vendedor, recalcula total
+- [x] Anulacion doble paso — confirmacion en session_state antes de anular venta
+- [x] Logo ORVANN en header — texto estilizado sobre la navegacion
+
+### Hecho (v1.5 — Constraints + Integridad)
+- [x] CHECK constraints en BD — ambos backends (SQLite DDL + PostgreSQL ALTER TABLE)
+- [x] Constraints: stock >= 0, precio >= 0, monto > 0, metodo_pago IN (...), pagado_por IN (socios)
+- [x] Migracion v1.5 — fix gastos con pagado_por='ORVANN' → 'JP'
+- [x] Migraciones PostgreSQL — v1.3 (monto_pagado), v1.4 (vendedor NULL), v1.5 (constraints)
+- [x] Setup Railway actualizado — ensure_tables() con todas las migraciones + verificacion
+- [x] Post-migration verification — verify_tables_postgres/sqlite confirma 7 tablas presentes
+- [x] 67 tests pasando (12 nuevos: editar_venta, reabrir_caja, credito+cliente, constraints)
+
 ### TODO Futuro
 - [ ] Foto del producto al seleccionar SKU
 - [ ] Notificacion WhatsApp cuando stock < minimo
@@ -344,6 +369,6 @@ orvann-retail-os/
 └── tests/
     ├── conftest.py        # Fixtures (db_path, db_with_data)
     ├── test_database.py   # 5 tests
-    ├── test_models.py     # 44 tests (caja, CRUD, descuentos, abonos)
+    ├── test_models.py     # 56 tests (caja, CRUD, descuentos, abonos, editar_venta, reabrir, constraints)
     └── test_migration.py  # 6 tests
 ```

@@ -1,9 +1,11 @@
 """
-Setup script para Railway deployment de ORVANN Retail OS. v1.2
+Setup script para Railway deployment de ORVANN Retail OS. v1.5
 
 Se ejecuta al iniciar en Railway (antes de streamlit).
 1. Crea tablas si no existen (idempotente)
-2. Si las tablas están vacías, migra datos desde SQLite local si existe
+2. Ejecuta todas las migraciones (v1.3, v1.4, v1.5)
+3. Verifica integridad post-migración
+4. Si las tablas están vacías, migra datos desde SQLite local si existe
 """
 import os
 import sys
@@ -25,10 +27,10 @@ def setup():
     print("ORVANN Railway Setup")
     print("=" * 50)
 
-    # 1. Crear tablas
-    from scripts.create_db import create_tables_postgres
-    create_tables_postgres(DATABASE_URL)
-    print("[OK] Tablas creadas/verificadas")
+    # 1. Crear tablas + migraciones + verificación
+    from scripts.create_db import ensure_tables
+    ensure_tables()
+    print("[OK] Tablas creadas, migraciones aplicadas, verificación OK")
 
     # 2. Verificar si necesita migración inicial
     _maybe_seed_from_sqlite()

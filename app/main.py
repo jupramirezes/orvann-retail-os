@@ -52,7 +52,7 @@ with st.sidebar:
             args=(key,),
         )
     st.markdown("---")
-    st.caption("ORVANN Retail OS v1.4")
+    st.caption("ORVANN Retail OS v1.5")
     st.caption("Streetwear Premium — Medellín")
 
 # ── Logo ORVANN en header ──

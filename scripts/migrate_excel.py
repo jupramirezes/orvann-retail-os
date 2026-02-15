@@ -219,7 +219,8 @@ def migrate_gastos(ws, conn):
         # Gastos antes de la apertura (2026-02-15) son inversión
         es_inversion = 1 if fecha_str and fecha_str < FECHA_APERTURA else 0
 
-        pagado_por = responsable or 'ORVANN'
+        # Default a JP si no hay responsable (ORVANN no es socio válido)
+        pagado_por = responsable if responsable in ('JP', 'KATHE', 'ANDRES') else 'JP'
 
         c.execute("""
             INSERT INTO gastos (fecha, categoria, monto, descripcion, metodo_pago, pagado_por, es_inversion, notas)
