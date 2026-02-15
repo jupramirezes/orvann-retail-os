@@ -1,4 +1,4 @@
-"""Vista Admin — 5 tabs: Gastos, Socios, Pedidos, Caja, Config. v1.3"""
+"""Vista Admin — 6 tabs: Gastos, Socios, Pedidos, Caja, Config, Auditoría. v1.5"""
 import streamlit as st
 import pandas as pd
 from datetime import date
@@ -34,8 +34,8 @@ CAT_PREFIX = {
 def render():
     st.markdown("## Administracion")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Gastos", "Socios", "Pedidos", "Caja", "Config"
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "Gastos", "Socios", "Pedidos", "Caja", "Config", "Auditoría"
     ])
 
     with tab1:
@@ -48,6 +48,8 @@ def render():
         render_caja()
     with tab5:
         render_config()
+    with tab6:
+        render_auditoria()
 
 
 # ══════════════════════════════════════════════════════════
@@ -611,3 +613,243 @@ def _render_productos():
                             st.rerun()
                         except ValueError as e:
                             st.error(str(e))
+
+
+# ══════════════════════════════════════════════════════════
+# TAB 6: AUDITORÍA (ver datos crudos, detectar duplicados)
+# ══════════════════════════════════════════════════════════
+
+def render_auditoria():
+    """Vista de auditoría: muestra todos los datos crudos de cada tabla para inspección."""
+    st.markdown("### Auditoría de Datos")
+    st.caption("Vista completa de todas las tablas. Usa esto para verificar que no haya datos duplicados o incorrectos.")
+
+    seccion = st.selectbox("Tabla a inspeccionar", [
+        "Gastos", "Ventas", "Productos", "Créditos", "Pedidos", "Costos Fijos", "Caja Diaria",
+    ], key="audit_tabla")
+
+    if seccion == "Gastos":
+        _audit_gastos()
+    elif seccion == "Ventas":
+        _audit_ventas()
+    elif seccion == "Productos":
+        _audit_productos()
+    elif seccion == "Créditos":
+        _audit_creditos()
+    elif seccion == "Pedidos":
+        _audit_pedidos()
+    elif seccion == "Costos Fijos":
+        _audit_costos_fijos()
+    elif seccion == "Caja Diaria":
+        _audit_caja()
+
+
+def _audit_gastos():
+    from app.database import query as db_query
+    gastos = db_query("SELECT * FROM gastos ORDER BY fecha DESC, id DESC")
+    st.metric("Total registros", len(gastos))
+
+    if not gastos:
+        st.info("No hay gastos")
+        return
+
+    df = pd.DataFrame(gastos)
+
+    # Resumen rápido
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Suma total", fmt_cop(df['monto'].sum()))
+    with c2:
+        by_socio = df.groupby('pagado_por')['monto'].sum()
+        for s, t in by_socio.items():
+            st.markdown(f"**{s}:** {fmt_cop(t)}")
+    with c3:
+        st.metric("Categorías únicas", df['categoria'].nunique())
+
+    # Detectar posibles duplicados
+    dupes = df[df.duplicated(subset=['fecha', 'monto', 'categoria', 'pagado_por'], keep=False)]
+    if not dupes.empty:
+        st.warning(f"**{len(dupes)} posibles duplicados** (misma fecha+monto+categoría+pagador)")
+        st.dataframe(dupes[['id', 'fecha', 'categoria', 'monto', 'descripcion', 'pagado_por']],
+                      use_container_width=True, hide_index=True)
+
+    # Tabla completa
+    st.markdown("#### Todos los gastos")
+    display = df[['id', 'fecha', 'categoria', 'monto', 'descripcion', 'metodo_pago', 'pagado_por', 'es_inversion']].copy()
+    display['monto'] = df['monto'].apply(fmt_cop)
+    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+
+
+def _audit_ventas():
+    from app.database import query as db_query
+    ventas = db_query("""
+        SELECT v.*, p.nombre as producto_nombre
+        FROM ventas v LEFT JOIN productos p ON v.sku = p.sku
+        ORDER BY v.fecha DESC, v.id DESC
+    """)
+    st.metric("Total registros", len(ventas))
+
+    if not ventas:
+        st.info("No hay ventas")
+        return
+
+    df = pd.DataFrame(ventas)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Total ventas", fmt_cop(df['total'].sum()))
+    with c2:
+        st.metric("Unidades", int(df['cantidad'].sum()))
+    with c3:
+        by_metodo = df.groupby('metodo_pago')['total'].sum()
+        for m, t in by_metodo.items():
+            st.markdown(f"**{m}:** {fmt_cop(t)}")
+
+    # Detectar posibles duplicados
+    dupes = df[df.duplicated(subset=['fecha', 'hora', 'sku', 'total'], keep=False)]
+    if not dupes.empty:
+        st.warning(f"**{len(dupes)} posibles duplicados** (misma fecha+hora+sku+total)")
+        st.dataframe(dupes[['id', 'fecha', 'hora', 'sku', 'producto_nombre', 'total', 'metodo_pago']],
+                      use_container_width=True, hide_index=True)
+
+    st.markdown("#### Todas las ventas")
+    display = df[['id', 'fecha', 'hora', 'sku', 'producto_nombre', 'cantidad', 'precio_unitario', 'total', 'metodo_pago', 'vendedor', 'cliente']].copy()
+    display['total'] = df['total'].apply(fmt_cop)
+    display['precio_unitario'] = df['precio_unitario'].apply(fmt_cop)
+    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+
+
+def _audit_productos():
+    productos = get_productos()
+    st.metric("Total SKUs", len(productos))
+
+    if not productos:
+        st.info("No hay productos")
+        return
+
+    df = pd.DataFrame(productos)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Unidades totales", int(df['stock'].sum()))
+    with c2:
+        st.metric("Valor costo", fmt_cop((df['costo'] * df['stock']).sum()))
+    with c3:
+        st.metric("Valor venta", fmt_cop((df['precio_venta'] * df['stock']).sum()))
+
+    # Detectar SKUs duplicados (no debería haber, es PK)
+    agotados = df[df['stock'] <= 0]
+    if not agotados.empty:
+        st.warning(f"**{len(agotados)} productos agotados** (stock = 0)")
+
+    st.markdown("#### Todos los productos")
+    display = df[['sku', 'nombre', 'categoria', 'talla', 'color', 'costo', 'precio_venta', 'stock', 'stock_minimo']].copy()
+    display['costo'] = df['costo'].apply(fmt_cop)
+    display['precio_venta'] = df['precio_venta'].apply(fmt_cop)
+    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+
+
+def _audit_creditos():
+    from app.database import query as db_query
+    creditos = db_query("""
+        SELECT c.*, v.sku, v.fecha as fecha_venta, p.nombre as producto_nombre
+        FROM creditos_clientes c
+        LEFT JOIN ventas v ON c.venta_id = v.id
+        LEFT JOIN productos p ON v.sku = p.sku
+        ORDER BY c.id DESC
+    """)
+    st.metric("Total créditos", len(creditos))
+
+    if not creditos:
+        st.info("No hay créditos")
+        return
+
+    df = pd.DataFrame(creditos)
+    pendientes = df[df['pagado'] == 0]
+    pagados = df[df['pagado'] == 1]
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Pendientes", len(pendientes))
+    with c2:
+        st.metric("Pagados", len(pagados))
+    with c3:
+        st.metric("Saldo pendiente", fmt_cop(pendientes['monto'].sum() - (pendientes.get('monto_pagado', pd.Series([0])).fillna(0).sum())))
+
+    st.markdown("#### Todos los créditos")
+    cols = ['id', 'cliente', 'monto', 'monto_pagado', 'fecha_credito', 'pagado', 'producto_nombre']
+    cols_exist = [c for c in cols if c in df.columns]
+    display = df[cols_exist].copy()
+    display['monto'] = df['monto'].apply(fmt_cop)
+    if 'monto_pagado' in display.columns:
+        display['monto_pagado'] = df['monto_pagado'].fillna(0).apply(fmt_cop)
+    st.dataframe(display, use_container_width=True, hide_index=True, height=400)
+
+
+def _audit_pedidos():
+    pedidos = get_pedidos()
+    st.metric("Total pedidos", len(pedidos))
+
+    if not pedidos:
+        st.info("No hay pedidos")
+        return
+
+    df = pd.DataFrame(pedidos)
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        by_estado = df.groupby('estado').size()
+        for e, n in by_estado.items():
+            st.markdown(f"**{e}:** {n}")
+    with c2:
+        st.metric("Total $", fmt_cop(df['total'].sum()))
+    with c3:
+        pendientes = df[df['estado'] == 'Pendiente']
+        st.metric("Pendiente pago", fmt_cop(pendientes['total'].sum()) if not pendientes.empty else "$0")
+
+    st.markdown("#### Todos los pedidos")
+    display = df[['id', 'fecha_pedido', 'proveedor', 'descripcion', 'unidades', 'costo_unitario', 'total', 'estado', 'pagado_por']].copy()
+    display['total'] = df['total'].apply(lambda x: fmt_cop(x or 0))
+    display['costo_unitario'] = df['costo_unitario'].apply(lambda x: fmt_cop(x or 0))
+    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+
+
+def _audit_costos_fijos():
+    costos = get_costos_fijos()
+    st.metric("Total rubros", len(costos))
+
+    if not costos:
+        st.info("No hay costos fijos")
+        return
+
+    df = pd.DataFrame(costos)
+    activos = df[df['activo'] == 1] if 'activo' in df.columns else df
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("Activos", len(activos))
+    with c2:
+        st.metric("Total mensual", fmt_cop(activos['monto_mensual'].sum()))
+
+    st.markdown("#### Todos los costos fijos")
+    display = df[['id', 'concepto', 'monto_mensual', 'activo', 'notas']].copy()
+    display['monto_mensual'] = df['monto_mensual'].apply(fmt_cop)
+    st.dataframe(display, use_container_width=True, hide_index=True, height=400)
+
+
+def _audit_caja():
+    from app.database import query as db_query
+    cajas = db_query("SELECT * FROM caja_diaria ORDER BY fecha DESC")
+    st.metric("Total registros caja", len(cajas))
+
+    if not cajas:
+        st.info("No hay registros de caja")
+        return
+
+    df = pd.DataFrame(cajas)
+    st.markdown("#### Todos los registros de caja")
+    display = df.copy()
+    for col in ['efectivo_inicio', 'efectivo_cierre_real']:
+        if col in display.columns:
+            display[col] = df[col].apply(lambda x: fmt_cop(x) if x is not None else '-')
+    st.dataframe(display, use_container_width=True, hide_index=True, height=400)

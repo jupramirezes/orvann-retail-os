@@ -7,5 +7,5 @@ dist/
 build/
 .env
 ~$*.xlsx
-.streamlit/
+.streamlit/secrets.toml
 scripts/verify_migration.py
