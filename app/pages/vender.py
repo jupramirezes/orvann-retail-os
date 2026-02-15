@@ -1,4 +1,4 @@
-"""Vista POS — Registrar ventas. Mobile-first. v1.2"""
+"""Vista POS — Registrar ventas. Mobile-first, mínimo clicks. v1.3"""
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime
@@ -12,58 +12,49 @@ from app.components.helpers import fmt_cop, METODOS_PAGO, VENDEDORES, CATEGORIAS
 
 def render():
     hoy = date.today()
-
-    # ── Resumen del día (ARRIBA de todo) ──
     data = get_ventas_dia()
     caja = get_estado_caja()
 
-    st.markdown(f"## 🛒 Vender — {hoy.strftime('%d %b %Y')}")
+    # ── Header con fecha ──
+    st.markdown(f"**ORVANN** — {hoy.strftime('%a %d %b %Y')}")
 
-    # Métricas rápidas del día
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Ventas hoy", fmt_cop(data['total']))
-    with col2:
-        st.metric("Unidades", data['unidades'])
-    with col3:
-        st.metric("Efectivo", fmt_cop(caja['ventas_efectivo']))
-    with col4:
-        st.metric("En caja", fmt_cop(caja['efectivo_esperado']))
+    # ── Métricas rápidas ──
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("Ventas hoy", fmt_cop(data['total']), f"{data['unidades']} uds")
+    with c2:
+        st.metric("Efectivo caja", fmt_cop(caja['efectivo_esperado']))
 
-    # Totales por método (si hay ventas)
-    if data['totales_metodo']:
-        met_cols = st.columns(len(data['totales_metodo']))
-        for i, (met, total) in enumerate(data['totales_metodo'].items()):
-            with met_cols[i]:
-                st.caption(f"{met}: {fmt_cop(total)}")
-
-    # ── Caja del día ──
+    # ── Abrir caja (si no está abierta) ──
     if not caja['caja_abierta']:
-        with st.expander("💰 Abrir Caja", expanded=True):
-            with st.form("form_abrir_caja"):
-                efectivo_ini = st.number_input("Efectivo inicial en caja", min_value=0, value=0, step=10000)
-                if st.form_submit_button("Abrir Caja", use_container_width=True):
-                    abrir_caja(efectivo_inicio=efectivo_ini)
-                    st.success(f"Caja abierta con {fmt_cop(efectivo_ini)}")
-                    st.rerun()
+        st.markdown("---")
+        with st.form("form_abrir_caja"):
+            st.markdown("#### 💰 Abrir Caja")
+            efectivo_ini = st.number_input("Efectivo inicial", min_value=0, value=0, step=10000)
+            if st.form_submit_button("Abrir Caja", use_container_width=True):
+                abrir_caja(efectivo_inicio=efectivo_ini)
+                st.rerun()
 
     st.markdown("---")
 
-    # ── Formulario de venta ──
+    # ── Formulario de venta (COMPACTO) ──
+    st.markdown("### Registrar Venta")
+
     productos = get_productos()
     opciones = []
     productos_dict = {}
     for p in productos:
-        label = f"{p['sku']} | {p['nombre']} | {fmt_cop(p['precio_venta'])} | Stock: {p['stock']}"
-        opciones.append(label)
-        productos_dict[label] = p
+        if p['stock'] > 0:
+            label = f"{p['nombre']} — {fmt_cop(p['precio_venta'])} ({p['stock']})"
+            opciones.append(label)
+            productos_dict[label] = p
 
     with st.form("form_venta", clear_on_submit=True):
         seleccion = st.selectbox(
-            "Buscar producto",
+            "Producto",
             options=opciones,
             index=None,
-            placeholder="Escribe SKU o nombre...",
+            placeholder="Buscar por nombre...",
         )
 
         col1, col2 = st.columns(2)
@@ -73,39 +64,34 @@ def render():
             precio_default = 0
             if seleccion and seleccion in productos_dict:
                 precio_default = int(productos_dict[seleccion]['precio_venta'])
-            precio = st.number_input("Precio unitario", min_value=0, value=precio_default, step=1000)
+            precio = st.number_input("Precio", min_value=0, value=precio_default, step=1000)
 
         col3, col4 = st.columns(2)
         with col3:
-            metodo = st.selectbox("Método de pago", METODOS_PAGO)
+            metodo = st.selectbox("Método", METODOS_PAGO)
         with col4:
             vendedor = st.selectbox("Vendedor", VENDEDORES)
 
-        # Opciones adicionales en expander
-        with st.expander("Opciones adicionales"):
-            cliente = st.text_input("Cliente (obligatorio si es crédito)")
-            descuento = st.number_input("Descuento %", min_value=0.0, max_value=100.0, value=0.0, step=5.0)
-            notas = st.text_input("Notas (opcional)")
+        # Cliente solo si crédito
+        cliente = ""
+        if metodo == 'Crédito':
+            cliente = st.text_input("Nombre del cliente")
 
-        submitted = st.form_submit_button("Registrar Venta", use_container_width=True)
+        # Calcular total para el botón
+        total_venta = precio * cantidad
+        label_btn = f"REGISTRAR VENTA — {fmt_cop(total_venta)}" if total_venta > 0 else "REGISTRAR VENTA"
+        submitted = st.form_submit_button(label_btn, use_container_width=True, type="primary")
 
     # ── Procesar venta ──
     if submitted:
-        # Obtener cliente/descuento/notas (pueden no existir si expander no abierto)
-        _cliente = cliente if 'cliente' in dir() else ''
-        _descuento = descuento if 'descuento' in dir() else 0
-        _notas = notas if 'notas' in dir() else ''
-
         if not seleccion:
             st.error("Selecciona un producto")
         else:
             prod = productos_dict[seleccion]
-            if prod['stock'] <= 0:
-                st.error(f"Sin stock para {prod['nombre']}")
-            elif prod['stock'] < cantidad:
+            if prod['stock'] < cantidad:
                 st.error(f"Stock insuficiente: {prod['stock']} disponibles")
             elif metodo == 'Crédito' and not cliente.strip():
-                st.error("Venta a crédito requiere nombre de cliente")
+                st.error("Crédito requiere nombre de cliente")
             else:
                 try:
                     venta_id = registrar_venta(
@@ -115,72 +101,73 @@ def render():
                         metodo_pago=metodo,
                         cliente=cliente.strip() or None,
                         vendedor=vendedor,
-                        descuento=descuento,
-                        notas=notas.strip() or None,
                     )
-                    total = precio * cantidad * (1 - descuento / 100)
-                    st.success(
-                        f"Venta #{venta_id} — {prod['nombre']} x{cantidad} — "
-                        f"{fmt_cop(total)} ({metodo})"
-                    )
+                    st.success(f"✅ #{venta_id} — {prod['nombre']} x{cantidad} — {fmt_cop(total_venta)} ({metodo})")
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))
 
-    # ── Ventas del día (tabla) ──
+    # ── Ventas del día ──
     st.markdown("---")
     st.markdown("### Ventas de hoy")
 
     if data['ventas']:
-        df = pd.DataFrame(data['ventas'])
-        cols_show = ['id', 'hora', 'producto_nombre', 'cantidad', 'total', 'metodo_pago', 'vendedor']
-        cols_exist = [c for c in cols_show if c in df.columns]
-        display = df[cols_exist].copy()
-        display['total'] = display['total'].apply(lambda x: fmt_cop(x))
-        st.dataframe(
-            display.rename(columns={
-                'id': 'ID', 'hora': 'Hora', 'producto_nombre': 'Producto',
-                'cantidad': 'Cant.', 'total': 'Total',
-                'metodo_pago': 'Método', 'vendedor': 'Vendedor',
-            }),
-            use_container_width=True, hide_index=True,
-        )
+        # Tabla compacta: hora | producto | total | método (1 letra) | vendedor
+        rows = []
+        for v in data['ventas']:
+            met_letra = v['metodo_pago'][0] if v['metodo_pago'] else '?'  # E, T, D, C
+            nombre_corto = (v.get('producto_nombre') or v['sku'])[:25]
+            rows.append({
+                'Hora': v['hora'][:5] if v.get('hora') else '',
+                'Producto': nombre_corto,
+                'Total': fmt_cop(v['total']),
+                'M': met_letra,
+                'Quien': v.get('vendedor', ''),
+            })
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        # Resumen por método
+        met_parts = []
+        for met, total in data['totales_metodo'].items():
+            met_parts.append(f"{met[0]}: {fmt_cop(total)}")
+        st.caption(" | ".join(met_parts) + f" | **TOTAL: {fmt_cop(data['total'])}**")
 
         # ── Anular venta ──
         with st.expander("Anular venta"):
             ultima = data['ventas'][0]
             st.warning(
-                f"**Última:** #{ultima['id']} — {ultima.get('producto_nombre', ultima['sku'])} "
-                f"x{ultima['cantidad']} — {fmt_cop(ultima['total'])} ({ultima['metodo_pago']})"
+                f"**Última:** #{ultima['id']} — {(ultima.get('producto_nombre') or ultima['sku'])[:30]} "
+                f"x{ultima['cantidad']} — {fmt_cop(ultima['total'])}"
             )
             anular_id = st.number_input("ID de venta a anular", min_value=1, value=int(ultima['id']), step=1)
             if st.button("Anular venta", key="btn_anular"):
                 try:
                     anulada = anular_venta(anular_id)
-                    st.success(f"Venta #{anular_id} anulada. Stock devuelto: {anulada['sku']} +{anulada['cantidad']}")
+                    st.success(f"Anulada #{anular_id}. Stock devuelto: +{anulada['cantidad']}")
                     st.rerun()
                 except ValueError as e:
                     st.error(str(e))
     else:
-        st.info("No hay ventas registradas hoy")
+        st.info("No hay ventas hoy")
 
     # ── Gasto rápido ──
     st.markdown("---")
-    with st.expander("💸 Registrar gasto rápido"):
+    with st.expander("💸 Gasto rápido"):
         with st.form("form_gasto_rapido", clear_on_submit=True):
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                cat_gasto = st.selectbox("Categoría", CATEGORIAS_GASTO, key="gasto_rapido_cat")
+                cat_gasto = st.selectbox("Categoría", CATEGORIAS_GASTO, key="gr_cat")
             with col_g2:
-                monto_gasto = st.number_input("Monto", min_value=0, value=0, step=1000, key="gasto_rapido_monto")
+                monto_gasto = st.number_input("Monto", min_value=0, value=0, step=1000, key="gr_monto")
 
             col_g3, col_g4 = st.columns(2)
             with col_g3:
-                pagador = st.selectbox("Pagado por", VENDEDORES, key="gasto_rapido_pagador")
+                pagador = st.selectbox("Pagó", VENDEDORES, key="gr_pagador")
             with col_g4:
-                metodo_gasto = st.selectbox("Método", ['Efectivo', 'Transferencia', 'Datáfono'], key="gasto_rapido_metodo")
+                metodo_gasto = st.selectbox("Método", ['Efectivo', 'Transferencia', 'Datáfono'], key="gr_metodo")
 
-            desc_gasto = st.text_input("Descripción", key="gasto_rapido_desc")
+            desc_gasto = st.text_input("Descripción", key="gr_desc")
             submit_gasto = st.form_submit_button("Registrar gasto", use_container_width=True)
 
         if submit_gasto and monto_gasto > 0 and desc_gasto:
@@ -192,7 +179,7 @@ def render():
                 pagado_por=pagador,
                 metodo_pago=metodo_gasto,
             )
-            st.success(f"Gasto registrado: {fmt_cop(monto_gasto)} — {desc_gasto} ({pagador})")
+            st.success(f"Gasto: {fmt_cop(monto_gasto)} — {desc_gasto} ({pagador})")
             st.rerun()
 
     # ── Cerrar caja ──
@@ -200,7 +187,6 @@ def render():
         st.markdown("---")
         with st.expander("🔒 Cerrar Caja"):
             st.markdown(f"**Efectivo esperado:** {fmt_cop(caja['efectivo_esperado'])}")
-            st.markdown(f"Ventas efectivo: {fmt_cop(caja['ventas_efectivo'])} | Gastos efectivo: {fmt_cop(caja['gastos_efectivo'])}")
             with st.form("form_cerrar_caja"):
                 efectivo_real = st.number_input("Efectivo real en caja", min_value=0, value=0, step=1000)
                 notas_caja = st.text_input("Notas de cierre")
@@ -208,7 +194,7 @@ def render():
                     result = cerrar_caja(hoy.isoformat(), efectivo_real, notas_caja.strip() or None)
                     dif = result['diferencia']
                     if abs(dif) < 1:
-                        st.success("Caja cuadrada")
+                        st.success("Caja cuadrada ✅")
                     elif dif > 0:
                         st.warning(f"Sobrante: {fmt_cop(dif)}")
                     else:
@@ -216,4 +202,4 @@ def render():
                     st.rerun()
     elif caja['cerrada']:
         st.markdown("---")
-        st.success(f"Caja cerrada — Efectivo real: {fmt_cop(caja['efectivo_cierre_real'] or 0)}")
+        st.success(f"Caja cerrada — {fmt_cop(caja['efectivo_cierre_real'] or 0)}")
