@@ -2,7 +2,7 @@
 
 Sistema POS y control operativo para ORVANN — streetwear premium en Medellín.
 
-Streamlit + SQLite + Python puro. Mobile-first, dark theme.
+Streamlit + SQLite/PostgreSQL + Python puro. Mobile-first, dark theme.
 
 ## Instalación
 
@@ -36,30 +36,33 @@ streamlit run app/main.py
 python -m pytest tests/ -v
 ```
 
-20 tests: base de datos (5), migración (6), modelos (9).
+50 tests: base de datos (5), migración (6), modelos (39).
 
 ## Vistas
 
 | Vista | Descripción |
 |-------|-------------|
-| **Vender** | POS — buscar producto, registrar venta, anular, gasto rápido |
+| **Vender** | POS — abrir caja, vender con descuento/notas, anular, gasto rápido, cerrar caja |
 | **Dashboard** | Punto de equilibrio, semanal, gráficos, utilidad operativa, alertas |
 | **Inventario** | Stock con filtros, resumen por categoría, agregar stock |
 | **Historial** | Ventas y gastos históricos, filtros por fecha/método/socio, exportar Excel |
-| **Admin** | Gastos (parejo/personalizado/individual), liquidación socios, caja, créditos, pedidos |
+| **Admin** | 7 tabs: gastos CRUD, liquidación socios, caja, créditos, pedidos CRUD, costos fijos, productos |
 
 ## Stack
 
 - Python 3.11+
 - Streamlit 1.41
-- SQLite
+- SQLite (desarrollo) / PostgreSQL (producción)
+- psycopg2-binary (PostgreSQL)
 - openpyxl (migración Excel)
 - pandas (tablas y gráficos)
 
-## Deploy
+## Deploy (Railway)
 
-Incluye `Procfile` y `runtime.txt` para Railway.
+Incluye `Procfile`, `runtime.txt` y `scripts/setup_railway.py`.
+
+Requiere variable de entorno `DATABASE_URL` (PostgreSQL).
 
 ```bash
-web: streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+web: python scripts/setup_railway.py && streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
 ```
