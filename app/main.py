@@ -1,4 +1,4 @@
-"""ORVANN Retail OS — Entry point. v1.4"""
+"""ORVANN Retail OS — Entry point. v1.5"""
 import streamlit as st
 import os
 import sys
@@ -8,9 +8,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from app.components.styles import apply_theme
 
+# Logo ORVANN como page icon (favicon)
+_LOGO_PATH = os.path.join(os.path.dirname(__file__), '..', 'ORVANN.png')
+_page_icon = _LOGO_PATH if os.path.exists(_LOGO_PATH) else "🖤"
+
 st.set_page_config(
     page_title="ORVANN Retail OS",
-    page_icon="🖤",
+    page_icon=_page_icon,
     layout="wide",
     initial_sidebar_state="collapsed",
 )

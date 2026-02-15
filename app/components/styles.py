@@ -1,5 +1,6 @@
-"""CSS tema limpio ORVANN v1.4 — fondo blanco, estilo Apple, mobile-first.
+"""CSS tema limpio ORVANN v1.5 — fondo blanco, estilo Apple, mobile-first.
 Fix: inputs legibles, botón dorado, alertas visibles, charts blancos, tablas claras.
+Fix v1.5: texto oscuro en gráficas Altair, tablas Glide DataGrid, st.text().
 """
 
 ORVANN_CSS = """
@@ -45,6 +46,15 @@ ORVANN_CSS = """
     .stCaption, small {
         color: var(--text-secondary) !important;
         font-size: 0.85rem !important;
+    }
+    /* st.text() — FIX v1.5: era invisible (heredaba blanco) */
+    .stText, [data-testid="stText"],
+    .stMarkdown, .element-container {
+        color: var(--text-primary) !important;
+    }
+    pre {
+        color: var(--text-primary) !important;
+        background-color: var(--bg-secondary) !important;
     }
 
     /* ── Sidebar ──────────────────────────── */
@@ -236,7 +246,7 @@ ORVANN_CSS = """
         color: var(--text-primary) !important;
     }
 
-    /* ── 1.4 CHARTS: FONDO BLANCO — FIX ── */
+    /* ── 1.4 CHARTS: FONDO BLANCO + TEXTO OSCURO — FIX v1.5 ── */
     .stPlotlyChart,
     .stAltairChart,
     .stBarChart,
@@ -249,6 +259,19 @@ ORVANN_CSS = """
     }
     canvas {
         background-color: var(--bg-card) !important;
+    }
+    /* FIX v1.5: Texto SVG dentro de gráficas Altair/Vega */
+    .vega-embed text,
+    [data-testid="stArrowVegaLiteChart"] text,
+    [data-testid="stVegaLiteChart"] text,
+    .stAltairChart text,
+    .marks text {
+        fill: var(--text-primary) !important;
+    }
+    .vega-embed .vega-bind label,
+    .vega-embed .chart-wrapper text {
+        fill: var(--text-primary) !important;
+        color: var(--text-primary) !important;
     }
 
     /* ── 1.5 TABLAS: HEADERS CLAROS, ZEBRA STRIPING ── */
@@ -279,10 +302,32 @@ ORVANN_CSS = """
     [data-testid="stDataFrame"] tbody tr:hover td {
         background-color: var(--bg-secondary) !important;
     }
-    /* Glide Data Grid (Streamlit's actual table renderer) */
+    /* Glide Data Grid (Streamlit's actual table renderer) — FIX v1.5 */
     [data-testid="stDataFrame"] [data-testid="glideDataEditor"],
     .dvn-scroller {
         background-color: var(--bg-card) !important;
+    }
+    /* Forzar texto oscuro en todas las capas del DataGrid */
+    [data-testid="stDataFrame"] *,
+    [data-testid="stDataFrame"] div,
+    [data-testid="stDataFrame"] span {
+        color: var(--text-primary) !important;
+    }
+    /* Header del DataGrid */
+    [data-testid="stDataFrame"] [role="columnheader"],
+    [data-testid="stDataFrame"] .gdg-header {
+        color: var(--text-primary) !important;
+        background-color: var(--bg-secondary) !important;
+    }
+    /* Celdas del DataGrid */
+    [data-testid="stDataFrame"] [role="gridcell"],
+    [data-testid="stDataFrame"] .gdg-cell {
+        color: var(--text-primary) !important;
+    }
+    /* Toolbar del DataFrame (filas/columnas counter) */
+    [data-testid="stDataFrame"] [data-testid="stDataFrameResizeHandle"],
+    [data-testid="stElementToolbar"] {
+        color: var(--text-secondary) !important;
     }
 
     /* ── 1.6 TABS: MAS GRANDES EN MOBILE ── */

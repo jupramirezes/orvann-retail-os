@@ -244,7 +244,7 @@ def render_liquidacion():
             st.markdown(f"**{socio}** — Total: {fmt_cop(liq['aportes'][socio])}")
             cats = liq['por_socio_categoria'].get(socio, {})
             for cat, total in sorted(cats.items(), key=lambda x: -x[1]):
-                st.text(f"  {cat}: {fmt_cop(total)}")
+                st.markdown(f"&nbsp;&nbsp;&nbsp;{cat}: {fmt_cop(total)}")
 
 
 # ══════════════════════════════════════════════════════════

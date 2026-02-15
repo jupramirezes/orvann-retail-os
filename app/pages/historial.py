@@ -123,8 +123,8 @@ def render_historial_ventas():
                 cornerRadiusTopLeft=4,
                 cornerRadiusTopRight=4,
             ).encode(
-                x=alt.X('fecha:T', title='', axis=alt.Axis(format='%d %b', labelAngle=-45)),
-                y=alt.Y('total:Q', title='Ventas ($)', axis=alt.Axis(format=',.0f')),
+                x=alt.X('fecha:T', title='', axis=alt.Axis(format='%d %b', labelAngle=-45, labelColor='#1D1D1F', titleColor='#1D1D1F')),
+                y=alt.Y('total:Q', title='Ventas ($)', axis=alt.Axis(format=',.0f', labelColor='#1D1D1F', titleColor='#1D1D1F')),
                 tooltip=[
                     alt.Tooltip('fecha:T', title='Fecha', format='%d %b %Y'),
                     alt.Tooltip('total:Q', title='Total', format='$,.0f'),
@@ -134,6 +134,12 @@ def render_historial_ventas():
             ).configure(
                 background='#FFFFFF',
                 font='-apple-system, sans-serif',
+            ).configure_axis(
+                labelColor='#1D1D1F',
+                titleColor='#1D1D1F',
+                gridColor='#E5E5EA',
+            ).configure_title(
+                color='#1D1D1F',
             ).properties(
                 height=250,
             )
@@ -220,7 +226,7 @@ def render_historial_gastos():
     st.markdown("#### Totales por categoría")
     cat_totals = filtered.groupby('categoria')['monto'].sum().sort_values(ascending=False)
     for cat, total in cat_totals.items():
-        st.text(f"  {cat}: {fmt_cop(total)}")
+        st.markdown(f"**{cat}:** {fmt_cop(total)}")
 
     # Tabla — formateada
     cols_show = ['fecha', 'categoria', 'monto', 'descripcion', 'pagado_por', 'metodo_pago']
