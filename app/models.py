@@ -413,6 +413,54 @@ def cerrar_caja(fecha, efectivo_real, notas=None, db_path=None):
     }
 
 
+def reabrir_caja(fecha=None, db_path=None):
+    """Reabre una caja cerrada (borra cierre, mantiene apertura).
+    Compatible SQLite y PostgreSQL."""
+    if fecha is None:
+        fecha = date.today().isoformat()
+    execute("""
+        UPDATE caja_diaria
+        SET cerrada = 0, efectivo_cierre_real = NULL, notas = NULL
+        WHERE fecha = ?
+    """, (fecha,), db_path=db_path)
+
+
+def editar_venta(venta_id, precio=None, metodo_pago=None, vendedor=None,
+                 notas=None, db_path=None):
+    """Edita campos de una venta sin afectar stock.
+    Recalcula total si cambia precio."""
+    updates = []
+    params = []
+    if precio is not None:
+        updates.append("precio_unitario = ?")
+        params.append(precio)
+    if metodo_pago is not None:
+        updates.append("metodo_pago = ?")
+        params.append(metodo_pago)
+    if vendedor is not None:
+        updates.append("vendedor = ?")
+        params.append(vendedor)
+    if notas is not None:
+        updates.append("notas = ?")
+        params.append(notas)
+
+    if not updates:
+        return
+
+    # Si cambia precio, recalcular total
+    if precio is not None:
+        venta = query("SELECT * FROM ventas WHERE id = ?", (venta_id,), db_path=db_path)
+        if venta:
+            v = venta[0]
+            new_total = precio * v['cantidad'] * (1 - (v.get('descuento_pct') or 0) / 100)
+            updates.append("total = ?")
+            params.append(new_total)
+
+    params.append(venta_id)
+    sql = f"UPDATE ventas SET {', '.join(updates)} WHERE id = ?"
+    execute(sql, tuple(params), db_path=db_path)
+
+
 # ── Créditos ──────────────────────────────────────────────
 
 def get_creditos_pendientes(db_path=None):

@@ -1,11 +1,11 @@
-"""Vista POS — Registrar ventas. Mobile-first, mínimo clicks. v1.3"""
+"""Vista POS — Registrar ventas. Mobile-first, mínimo clicks. v1.4"""
 import streamlit as st
 import pandas as pd
 from datetime import date, datetime
 
 from app.models import (
     registrar_venta, anular_venta, get_ventas_dia, get_productos,
-    registrar_gasto, get_estado_caja, abrir_caja, cerrar_caja,
+    registrar_gasto, get_estado_caja, abrir_caja, cerrar_caja, reabrir_caja,
 )
 from app.components.helpers import fmt_cop, METODOS_PAGO, VENDEDORES, CATEGORIAS_GASTO
 
@@ -131,7 +131,7 @@ def render():
             met_parts.append(f"{met[0]}: {fmt_cop(total)}")
         st.caption(" | ".join(met_parts) + f" | **TOTAL: {fmt_cop(data['total'])}**")
 
-        # ── Anular venta ──
+        # ── Anular venta (con confirmación) ──
         with st.expander("Anular venta"):
             ultima = data['ventas'][0]
             st.warning(
@@ -139,13 +139,27 @@ def render():
                 f"x{ultima['cantidad']} — {fmt_cop(ultima['total'])}"
             )
             anular_id = st.number_input("ID de venta a anular", min_value=1, value=int(ultima['id']), step=1)
-            if st.button("Anular venta", key="btn_anular"):
-                try:
-                    anulada = anular_venta(anular_id)
-                    st.success(f"Anulada #{anular_id}. Stock devuelto: +{anulada['cantidad']}")
+            # Confirmación doble paso
+            if st.session_state.get('confirm_anular'):
+                st.error("⚠️ ¿Estás seguro? Se devolverá stock.")
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Sí, anular", key="yes_anular"):
+                        try:
+                            anulada = anular_venta(anular_id)
+                            st.session_state.pop('confirm_anular', None)
+                            st.success(f"Anulada #{anular_id}. Stock devuelto: +{anulada['cantidad']}")
+                            st.rerun()
+                        except ValueError as e:
+                            st.error(str(e))
+                with c2:
+                    if st.button("Cancelar", key="no_anular"):
+                        st.session_state.pop('confirm_anular', None)
+                        st.rerun()
+            else:
+                if st.button("Anular venta", key="btn_anular"):
+                    st.session_state['confirm_anular'] = True
                     st.rerun()
-                except ValueError as e:
-                    st.error(str(e))
     else:
         st.info("No hay ventas hoy")
 
@@ -201,3 +215,8 @@ def render():
     elif caja['cerrada']:
         st.markdown("---")
         st.success(f"Caja cerrada — {fmt_cop(caja['efectivo_cierre_real'] or 0)}")
+        with st.expander("🔓 Reabrir caja"):
+            st.warning("¿Reabrir la caja? Se borrará el cierre.")
+            if st.button("Sí, reabrir caja", key="btn_reabrir"):
+                reabrir_caja(hoy.isoformat())
+                st.rerun()
