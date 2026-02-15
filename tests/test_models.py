@@ -1,4 +1,4 @@
-"""Tests para la lógica de negocio ORVANN. v1.2"""
+"""Tests para la logica de negocio ORVANN. v1.3"""
 import sqlite3
 import pytest
 from datetime import date
@@ -41,6 +41,10 @@ from app.models import (
     get_total_deuda_proveedores,
     # Ventas helpers
     get_ventas_dia,
+    # v1.3 — Creditos
+    get_creditos_pendientes,
+    registrar_abono,
+    registrar_pago_credito,
 )
 from app.database import execute, query
 
@@ -713,3 +717,100 @@ def test_ventas_dia(db_with_data):
     assert dia['totales_metodo']['Efectivo'] == pytest.approx(75000)
     assert dia['totales_metodo']['Transferencia'] == pytest.approx(200000)
     assert len(dia['ventas']) == 2
+
+
+# ── Tests v1.3 — Abono parcial creditos ──────────────────
+
+def test_abono_parcial(db_with_data):
+    """Abono parcial reduce saldo sin completar credito."""
+    db = db_with_data
+    # Crear venta a credito
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Crédito',
+                          cliente='Carlos', vendedor='JP', db_path=db)
+
+    # Verificar credito creado
+    creditos = get_creditos_pendientes(db_path=db)
+    assert len(creditos) == 1
+    assert creditos[0]['monto'] == 75000
+    cid = creditos[0]['id']
+
+    # Abonar 30000
+    result = registrar_abono(cid, 30000, db_path=db)
+    assert result['abono'] == 30000
+    assert result['total_pagado'] == 30000
+    assert result['saldo_restante'] == 45000
+    assert result['completado'] is False
+
+    # Credito sigue pendiente
+    creditos = get_creditos_pendientes(db_path=db)
+    assert len(creditos) == 1
+    assert creditos[0]['monto_pagado'] == 30000
+
+
+def test_abono_completa_pago(db_with_data):
+    """Abono que cubre el total marca credito como pagado."""
+    db = db_with_data
+    vid = registrar_venta('HOOD-TEST-L', 1, 200000, 'Crédito',
+                          cliente='Maria', vendedor='KATHE', db_path=db)
+
+    creditos = get_creditos_pendientes(db_path=db)
+    cid = creditos[0]['id']
+
+    # Abonar parcialmente
+    registrar_abono(cid, 100000, db_path=db)
+
+    # Abonar el resto
+    result = registrar_abono(cid, 100000, db_path=db)
+    assert result['completado'] is True
+    assert result['saldo_restante'] == 0
+
+    # Ya no hay creditos pendientes
+    creditos = get_creditos_pendientes(db_path=db)
+    assert len(creditos) == 0
+
+
+def test_abono_credito_ya_pagado_falla(db_with_data):
+    """No se puede abonar a un credito ya pagado."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Crédito',
+                          cliente='Pedro', vendedor='JP', db_path=db)
+
+    creditos = get_creditos_pendientes(db_path=db)
+    cid = creditos[0]['id']
+
+    # Pagar completamente
+    registrar_pago_credito(cid, db_path=db)
+
+    # Intentar abonar debe fallar
+    with pytest.raises(ValueError, match="ya esta pagado"):
+        registrar_abono(cid, 10000, db_path=db)
+
+
+def test_abono_monto_invalido(db_with_data):
+    """Abono con monto 0 o negativo falla."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Crédito',
+                          cliente='Luis', vendedor='JP', db_path=db)
+
+    creditos = get_creditos_pendientes(db_path=db)
+    cid = creditos[0]['id']
+
+    with pytest.raises(ValueError, match="mayor a 0"):
+        registrar_abono(cid, 0, db_path=db)
+
+
+def test_pago_completo_llena_monto_pagado(db_with_data):
+    """registrar_pago_credito pone monto_pagado = monto total."""
+    db = db_with_data
+    vid = registrar_venta('CAM-TEST-S', 1, 75000, 'Crédito',
+                          cliente='Ana', vendedor='ANDRES', db_path=db)
+
+    creditos = get_creditos_pendientes(db_path=db)
+    cid = creditos[0]['id']
+
+    registrar_pago_credito(cid, db_path=db)
+
+    # Verificar que monto_pagado = monto
+    paid = query("SELECT * FROM creditos_clientes WHERE id = ?", (cid,), db_path=db)
+    assert paid[0]['pagado'] == 1
+    assert paid[0]['monto_pagado'] == 75000

@@ -1,4 +1,4 @@
-"""Crea las 7 tablas de ORVANN Retail OS. Dual SQLite/PostgreSQL. v1.2"""
+"""Crea las 7 tablas de ORVANN Retail OS. Dual SQLite/PostgreSQL. v1.3"""
 import sqlite3
 import os
 
@@ -60,6 +60,7 @@ SQLITE_TABLES = [
         venta_id INTEGER REFERENCES ventas(id),
         cliente TEXT NOT NULL,
         monto REAL NOT NULL,
+        monto_pagado REAL DEFAULT 0,
         fecha_credito DATE NOT NULL,
         fecha_pago DATE,
         pagado INTEGER DEFAULT 0,
@@ -143,6 +144,7 @@ POSTGRES_TABLES = [
         venta_id INTEGER REFERENCES ventas(id),
         cliente TEXT NOT NULL,
         monto NUMERIC NOT NULL,
+        monto_pagado NUMERIC DEFAULT 0,
         fecha_credito DATE NOT NULL,
         fecha_pago DATE,
         pagado INTEGER DEFAULT 0,
@@ -201,6 +203,23 @@ def create_tables_postgres(database_url=None):
     print("PostgreSQL tables created successfully")
 
 
+def migrate_v13(db_path=None):
+    """Agrega columna monto_pagado a creditos_clientes si no existe. v1.3"""
+    if db_path is None:
+        db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(creditos_clientes)").fetchall()]
+        if 'monto_pagado' not in cols:
+            conn.execute("ALTER TABLE creditos_clientes ADD COLUMN monto_pagado REAL DEFAULT 0")
+            conn.commit()
+            print("Migration v1.3: added monto_pagado column")
+    finally:
+        conn.close()
+
+
 def ensure_tables():
     """Crea tablas en el backend activo. Idempotente (IF NOT EXISTS)."""
     database_url = os.environ.get('DATABASE_URL', '')
@@ -208,6 +227,7 @@ def ensure_tables():
         create_tables_postgres(database_url)
     else:
         create_tables()
+        migrate_v13()
 
 
 if __name__ == '__main__':

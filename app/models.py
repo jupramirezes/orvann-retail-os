@@ -1,4 +1,4 @@
-"""Lógica de negocio de ORVANN Retail OS. v1.2"""
+"""Logica de negocio de ORVANN Retail OS. v1.3"""
 import math
 from datetime import date, datetime, timedelta
 from app.database import query, execute, get_connection
@@ -402,10 +402,56 @@ def get_creditos_pendientes(db_path=None):
 
 
 def registrar_pago_credito(credito_id, fecha_pago=None, db_path=None):
+    """Marca un credito como completamente pagado."""
     if fecha_pago is None:
         fecha_pago = date.today().isoformat()
-    execute("UPDATE creditos_clientes SET pagado = 1, fecha_pago = ? WHERE id = ?",
-            (fecha_pago, credito_id), db_path=db_path)
+    # Set monto_pagado to full monto when marking as paid
+    credito = query("SELECT monto FROM creditos_clientes WHERE id = ?", (credito_id,), db_path=db_path)
+    if credito:
+        execute("UPDATE creditos_clientes SET pagado = 1, fecha_pago = ?, monto_pagado = ? WHERE id = ?",
+                (fecha_pago, credito[0]['monto'], credito_id), db_path=db_path)
+    else:
+        execute("UPDATE creditos_clientes SET pagado = 1, fecha_pago = ? WHERE id = ?",
+                (fecha_pago, credito_id), db_path=db_path)
+
+
+def registrar_abono(credito_id, monto_abono, db_path=None):
+    """Registra un abono parcial a un credito. Si cubre el total, marca como pagado."""
+    credito = query("SELECT * FROM creditos_clientes WHERE id = ?", (credito_id,), db_path=db_path)
+    if not credito:
+        raise ValueError(f"Credito #{credito_id} no existe")
+    credito = credito[0]
+
+    if credito['pagado']:
+        raise ValueError(f"Credito #{credito_id} ya esta pagado")
+
+    if monto_abono <= 0:
+        raise ValueError("El monto del abono debe ser mayor a 0")
+
+    monto_pagado_actual = credito.get('monto_pagado') or 0
+    nuevo_pagado = monto_pagado_actual + monto_abono
+    saldo_restante = credito['monto'] - nuevo_pagado
+
+    if saldo_restante <= 0:
+        # Abono completa el pago
+        execute("""
+            UPDATE creditos_clientes
+            SET monto_pagado = ?, pagado = 1, fecha_pago = ?
+            WHERE id = ?
+        """, (credito['monto'], date.today().isoformat(), credito_id), db_path=db_path)
+    else:
+        # Abono parcial
+        execute("""
+            UPDATE creditos_clientes SET monto_pagado = ? WHERE id = ?
+        """, (nuevo_pagado, credito_id), db_path=db_path)
+
+    return {
+        'credito_id': credito_id,
+        'abono': monto_abono,
+        'total_pagado': min(nuevo_pagado, credito['monto']),
+        'saldo_restante': max(0, saldo_restante),
+        'completado': saldo_restante <= 0,
+    }
 
 
 # ── Inventario ────────────────────────────────────────────

@@ -8,7 +8,7 @@ from app.models import (
     editar_gasto, eliminar_gasto, get_gastos_mes,
     calcular_liquidacion_socios,
     get_estado_caja, abrir_caja, cerrar_caja,
-    get_creditos_pendientes, registrar_pago_credito,
+    get_creditos_pendientes, registrar_pago_credito, registrar_abono,
     get_pedidos, get_pedidos_pendientes, get_total_deuda_proveedores,
     registrar_pedido, pagar_pedido, recibir_mercancia, eliminar_pedido,
     get_costos_fijos, crear_costo_fijo, editar_costo_fijo, eliminar_costo_fijo,
@@ -399,19 +399,43 @@ def render_caja():
     if not creditos:
         st.success("No hay creditos pendientes")
     else:
-        total_cred = sum(c['monto'] for c in creditos)
-        st.metric("Total por cobrar", fmt_cop(total_cred))
+        total_pagado_sum = sum(c.get('monto_pagado') or 0 for c in creditos)
+        total_monto = sum(c['monto'] for c in creditos)
+        total_saldo = total_monto - total_pagado_sum
+        st.metric("Total por cobrar", fmt_cop(total_saldo))
 
         for c in creditos:
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                nombre_prod = c.get('producto_nombre') or c.get('sku', '')
-                st.markdown(f"**{c['cliente']}** — {fmt_cop(c['monto'])} — {nombre_prod} ({c['fecha_credito']})")
-            with col2:
-                if st.button("Pagado", key=f"pagar_{c['id']}"):
+            pagado_parcial = c.get('monto_pagado') or 0
+            saldo = c['monto'] - pagado_parcial
+            nombre_prod = c.get('producto_nombre') or c.get('sku', '')
+
+            # Info line
+            info = f"**{c['cliente']}** — Total: {fmt_cop(c['monto'])}"
+            if pagado_parcial > 0:
+                info += f" | Abonado: {fmt_cop(pagado_parcial)} | **Saldo: {fmt_cop(saldo)}**"
+            info += f" — {nombre_prod} ({c['fecha_credito']})"
+            st.markdown(info)
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("Pago completo", key=f"pagar_{c['id']}"):
                     registrar_pago_credito(c['id'])
                     st.success(f"Credito de {c['cliente']} pagado")
                     st.rerun()
+            with col_b:
+                with st.form(f"form_abono_{c['id']}"):
+                    monto_ab = st.number_input("Abono", min_value=0, value=0, step=1000, key=f"ab_m_{c['id']}")
+                    if st.form_submit_button("Abonar"):
+                        if monto_ab > 0:
+                            try:
+                                result = registrar_abono(c['id'], monto_ab)
+                                if result['completado']:
+                                    st.success(f"Credito completado con abono de {fmt_cop(monto_ab)}")
+                                else:
+                                    st.success(f"Abono {fmt_cop(monto_ab)} — Saldo: {fmt_cop(result['saldo_restante'])}")
+                                st.rerun()
+                            except ValueError as e:
+                                st.error(str(e))
 
 
 # ══════════════════════════════════════════════════════════
