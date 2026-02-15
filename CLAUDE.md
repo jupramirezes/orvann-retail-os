@@ -44,7 +44,7 @@ Variable de entorno requerida: `DATABASE_URL` (provista por Railway PostgreSQL a
 
 ### Tests
 ```bash
-python -m pytest tests/ -v        # 50 tests (siempre usan SQLite temporal)
+python -m pytest tests/ -v        # 55 tests (siempre usan SQLite temporal)
 ```
 
 ## Backend de Datos (database.py)
@@ -121,7 +121,8 @@ Funciones clave:
 | id | INTEGER PK | |
 | venta_id | INTEGER FK | → ventas.id |
 | cliente | TEXT | |
-| monto | REAL/NUMERIC | |
+| monto | REAL/NUMERIC | Total del credito |
+| monto_pagado | REAL/NUMERIC | Default 0 — acumula abonos parciales |
 | fecha_credito | DATE | |
 | fecha_pago | DATE | NULL si no pagado |
 | pagado | INTEGER | 0/1 |
@@ -236,6 +237,11 @@ El usuario puede editar el SKU antes de confirmar.
 - `editar_pedido()` — Recalcula total si cambian unidades/costo
 - `eliminar_pedido()`
 
+### Creditos
+- `get_creditos_pendientes()` — Creditos no pagados
+- `registrar_pago_credito()` — Marca como pagado (monto_pagado = monto)
+- `registrar_abono()` — Abono parcial, si cubre total marca como pagado
+
 ### Otros
 - `calcular_punto_equilibrio()` — CF / margen ponderado
 - `calcular_liquidacion_socios()` — Suma directa por socio
@@ -281,10 +287,11 @@ El usuario puede editar el SKU antes de confirmar.
 - [x] Auto-SKU — genera SKU automatico CAT-COLOR-TALLA al crear producto
 - [x] Dashboard simplificado — solo metricas utiles (PE, semanal, resultado, inventario, alertas)
 - [x] Gastos tabla compacta — dataframe en lugar de lista inline, edit/delete via select+expander
+- [x] Abono parcial de creditos — monto_pagado acumula abonos, marca pagado al cubrir total
+- [x] Sync Excel → BD — scripts/sync_excel.py (gastos, costos fijos, precios) idempotente
+- [x] 55 tests pasando
 
 ### TODO Futuro
-- [ ] Abono parcial de creditos (monto_pagado en creditos_clientes)
-- [ ] Sincronizar Excel actualizado (scripts/sync_excel.py)
 - [ ] Foto del producto al seleccionar SKU
 - [ ] Notificacion WhatsApp cuando stock < minimo
 - [ ] PWA para instalar como app en celular
@@ -318,7 +325,8 @@ orvann-retail-os/
 ├── scripts/
 │   ├── create_db.py       # Crear tablas (SQLite + PostgreSQL)
 │   ├── migrate_excel.py   # Migrar datos desde Excel
-│   ├── read_excel.py      # Comparar Excel vs BD (temporal)
+│   ├── read_excel.py      # Comparar Excel vs BD (temporal/diagnostico)
+│   ├── sync_excel.py      # Sync Excel → BD (gastos, costos, precios) idempotente
 │   └── setup_railway.py   # Setup Railway (tablas + seed desde SQLite)
 ├── app/
 │   ├── main.py            # Entry point + navegacion con session_state
@@ -336,6 +344,6 @@ orvann-retail-os/
 └── tests/
     ├── conftest.py        # Fixtures (db_path, db_with_data)
     ├── test_database.py   # 5 tests
-    ├── test_models.py     # 39 tests (caja, CRUD gastos/productos/costos/pedidos, descuentos)
+    ├── test_models.py     # 44 tests (caja, CRUD, descuentos, abonos)
     └── test_migration.py  # 6 tests
 ```
