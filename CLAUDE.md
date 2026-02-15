@@ -1,4 +1,4 @@
-# ORVANN Retail OS — Documento Maestro
+# ORVANN Retail OS — Documento Maestro (v1.1)
 
 ## Qué es
 
@@ -16,7 +16,7 @@ Streamlit (frontend) → Python (lógica) → SQLite (datos)
 - **Sin API REST** — Streamlit consulta SQLite directamente
 - **Sin frameworks pesados** — solo Streamlit + openpyxl + pandas
 - **Mobile-first** — diseñado para usar desde celular
-- **Dark theme** — colores de marca ORVANN (dorado #c4a35a sobre negro #0a0a0a)
+- **Dark theme** — colores cálidos ORVANN (dorado #d4a843 sobre gris oscuro #161618)
 
 ## Cómo correr
 
@@ -70,10 +70,10 @@ streamlit run app/main.py         # Iniciar aplicación
 | id | INTEGER PK | |
 | fecha | DATE | |
 | categoria | TEXT | Arriendo, Servicios, etc. |
-| monto | REAL | Monto REAL (no triplicado) |
+| monto | REAL | Cada fila = pago real de un socio |
 | descripcion | TEXT | |
-| pagado_por | TEXT | JP, KATHE, ANDRES, ORVANN |
-| es_inversion | INTEGER | 1 si es gasto pre-apertura |
+| pagado_por | TEXT | JP, KATHE, ANDRES (siempre un socio específico) |
+| es_inversion | INTEGER | 1 si es gasto pre-apertura (antes 2026-02-15) |
 
 ### creditos_clientes
 | Campo | Tipo | Notas |
@@ -110,7 +110,7 @@ streamlit run app/main.py         # Iniciar aplicación
 
 ### Hecho (v1.0)
 - [x] BD SQLite con 7 tablas
-- [x] Migración desde Excel (98 SKUs, 184 unidades, gastos deduplicados)
+- [x] Migración desde Excel (98 SKUs, 184 unidades)
 - [x] Vista "Vender" (POS con búsqueda, registro, ventas del día)
 - [x] Vista "Dashboard" (punto de equilibrio, métricas, alertas)
 - [x] Vista "Inventario" (filtros, resumen, agregar stock)
@@ -119,22 +119,35 @@ streamlit run app/main.py         # Iniciar aplicación
 - [x] 13 tests pasando
 - [x] MILE renombrado a ANDRES en toda la BD
 
+### Hecho (v1.1 — Correcciones y nuevas funcionalidades)
+- [x] **CRÍTICO: Gastos migrados correctamente** — cada fila del Excel = pago real de un socio. NO se deduplica. Totales: JP=$5,751,890, KATHE=$5,916,090, ANDRES=$5,779,090, TOTAL=$17,447,070
+- [x] **Liquidación socios corregida** — suma directa por socio, no hay concepto "ORVANN" pooled. Incluye detalle por socio/categoría y cronológico
+- [x] **Venta flow arreglado** — registro directo sin segundo botón de confirmación
+- [x] **Anular venta** — devuelve stock, elimina crédito asociado
+- [x] **Pedidos: fechas 2025-02-XX corregidas a 2026-02-XX**
+- [x] **Entrada de gastos mejorada** — 3 modos: Parejo (divide entre 3), Personalizado (montos diferentes), Solo uno
+- [x] **Vista Historial** — ventas y gastos históricos con filtros, gráficos, exportar a Excel
+- [x] **Tema cálido** — #161618 warm dark + colores más visibles + iconos en nav
+- [x] **Gasto rápido desde Vender** — expander para registrar gasto sin ir a Admin
+- [x] **Dashboard mejorado** — stats semanales, comparativa semana anterior, gráfico ventas diarias, utilidad operativa
+- [x] **Deploy prep** — Procfile, runtime.txt, requirements pinned
+- [x] **20 tests pasando** (5 DB + 6 migración + 9 modelos)
+
 ### TODO Futuro
+- [ ] Deploy a Railway (necesita volume para SQLite persistente)
 - [ ] Foto del producto al seleccionar SKU
-- [ ] Gráficos de tendencia de ventas
 - [ ] Notificación WhatsApp cuando stock < mínimo
 - [ ] Generador de recibo (PDF/imagen para WhatsApp)
 - [ ] Sync con Shopify
 - [ ] PWA para instalar como app en celular
 - [ ] Gestión de devoluciones
-- [ ] Reportes exportables (Excel/PDF)
 
 ## Convenciones
 
 - **Moneda:** COP (Pesos colombianos). Formateo: `$1.234.567` (punto como separador de miles)
 - **Zona horaria:** Colombia (UTC-5) — usar `date.today()` del servidor
 - **Socios:** JP, KATHE, ANDRES (33% cada uno)
-- **Gastos ORVANN:** Cuando los 3 socios pagan parejo, pagado_por = 'ORVANN'
+- **Gastos:** Cada fila de gastos tiene un pagado_por específico (JP, KATHE o ANDRES). NO existe "ORVANN" como pagador. Si los 3 pagan parejo, se crean 3 filas.
 - **Vendedores:** JP, KATHE, ANDRES (mismo que socios por ahora)
 - **Métodos de pago:** Efectivo, Transferencia, Datáfono, Crédito
 
@@ -144,7 +157,9 @@ streamlit run app/main.py         # Iniciar aplicación
 orvann-retail-os/
 ├── CLAUDE.md              # Este documento
 ├── README.md              # Descripción del proyecto
-├── requirements.txt       # streamlit, openpyxl, pandas, pytest
+├── Procfile               # Railway deploy
+├── runtime.txt            # Python version for Railway
+├── requirements.txt       # streamlit, openpyxl, pandas, pytest (pinned)
 ├── data/
 │   ├── orvann.db          # BD SQLite
 │   └── Control_Operativo_Orvann.xlsx
@@ -156,16 +171,17 @@ orvann-retail-os/
 │   ├── database.py        # Conexión y queries
 │   ├── models.py          # Lógica de negocio
 │   ├── pages/
-│   │   ├── vender.py      # POS
-│   │   ├── dashboard.py   # Métricas y PE
+│   │   ├── vender.py      # POS + anular venta + gasto rápido
+│   │   ├── dashboard.py   # Métricas, PE, semanal, gráficos
 │   │   ├── inventario.py  # Stock
-│   │   └── admin.py       # Gastos, socios, caja, créditos
+│   │   ├── historial.py   # Ventas/gastos históricos + export Excel
+│   │   └── admin.py       # Gastos (3 modos), liquidación, caja, créditos, pedidos
 │   └── components/
-│       ├── styles.py      # CSS dark theme
+│       ├── styles.py      # CSS tema cálido
 │       └── helpers.py     # Formateo COP, utilidades
 └── tests/
     ├── conftest.py        # Fixtures
-    ├── test_database.py
-    ├── test_models.py
-    └── test_migration.py
+    ├── test_database.py   # 5 tests
+    ├── test_models.py     # 9 tests (incluye anular, parejo, personalizado)
+    └── test_migration.py  # 6 tests (incluye totales por socio, pedidos)
 ```

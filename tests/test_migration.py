@@ -1,4 +1,4 @@
-"""Tests para la migración desde Excel."""
+"""Tests para la migración desde Excel. v1.1"""
 import os
 import sys
 import tempfile
@@ -40,19 +40,44 @@ def test_migrar_productos(migrated_db):
     conn.close()
 
 
-def test_migrar_gastos_sin_triplicar(migrated_db):
-    """Gastos reales deben ser significativamente menos que las filas crudas del Excel."""
+def test_migrar_gastos_todos_importados(migrated_db):
+    """Cada fila del Excel = un pago real. No se deduplica nada."""
     conn = sqlite3.connect(migrated_db)
     conn.row_factory = sqlite3.Row
 
     count = conn.execute("SELECT COUNT(*) as c FROM gastos").fetchone()['c']
-    # Originally 55 raw rows, should be around 25 after deduplication
-    assert count < 55, f"Gastos no se deduplicaron: {count} (esperado < 55)"
-    assert count >= 15, f"Muy pocos gastos: {count} (esperado >= 15)"
+    # Deben ser todas las filas con fecha y monto (55 aprox)
+    assert count >= 40, f"Muy pocos gastos: {count} (esperado >= 40)"
+    assert count <= 60, f"Demasiados gastos: {count} (esperado <= 60)"
 
     # No references to MILE
     mile_count = conn.execute("SELECT COUNT(*) as c FROM gastos WHERE pagado_por LIKE '%MILE%'").fetchone()['c']
     assert mile_count == 0, "Aún hay referencias a MILE en gastos"
+
+    conn.close()
+
+
+def test_gastos_totales_por_socio(migrated_db):
+    """Totales por socio deben coincidir con Excel."""
+    conn = sqlite3.connect(migrated_db)
+    conn.row_factory = sqlite3.Row
+
+    rows = conn.execute("""
+        SELECT pagado_por, SUM(monto) as total
+        FROM gastos
+        GROUP BY pagado_por
+        ORDER BY pagado_por
+    """).fetchall()
+
+    totales = {r['pagado_por']: r['total'] for r in rows}
+
+    # Totales conocidos del Excel
+    assert totales.get('ANDRES', 0) == pytest.approx(5779090, rel=0.01), f"ANDRES: {totales.get('ANDRES')}"
+    assert totales.get('JP', 0) == pytest.approx(5751890, rel=0.01), f"JP: {totales.get('JP')}"
+    assert totales.get('KATHE', 0) == pytest.approx(5916090, rel=0.01), f"KATHE: {totales.get('KATHE')}"
+
+    total_general = sum(totales.values())
+    assert total_general == pytest.approx(17447070, rel=0.01), f"Total: {total_general}"
 
     conn.close()
 
@@ -87,5 +112,23 @@ def test_migrar_costos_fijos(migrated_db):
 
     total = conn.execute("SELECT SUM(monto_mensual) as s FROM costos_fijos").fetchone()['s']
     assert total == pytest.approx(1914900, rel=0.01)
+
+    conn.close()
+
+
+def test_migrar_pedidos_fechas_corregidas(migrated_db):
+    """Los pedidos con fecha 2025-02-XX deben haberse corregido a 2026-02-XX."""
+    conn = sqlite3.connect(migrated_db)
+    conn.row_factory = sqlite3.Row
+
+    # No debe haber pedidos con año 2025
+    old_dates = conn.execute(
+        "SELECT COUNT(*) as c FROM pedidos_proveedores WHERE fecha_pedido LIKE '2025-%'"
+    ).fetchone()['c']
+    assert old_dates == 0, f"Aún hay {old_dates} pedidos con fecha 2025"
+
+    # Debe haber pedidos
+    count = conn.execute("SELECT COUNT(*) as c FROM pedidos_proveedores").fetchone()['c']
+    assert count >= 10
 
     conn.close()

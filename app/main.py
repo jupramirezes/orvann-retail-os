@@ -17,12 +17,13 @@ st.set_page_config(
 
 apply_theme()
 
-# ── Navegación ──
+# ── Navegación con iconos ──
 PAGES = {
-    "Vender": "vender",
-    "Dashboard": "dashboard",
-    "Inventario": "inventario",
-    "Admin": "admin",
+    "🛒 Vender": "vender",
+    "📊 Dashboard": "dashboard",
+    "📦 Inventario": "inventario",
+    "📜 Historial": "historial",
+    "⚙️ Admin": "admin",
 }
 
 # Sidebar
@@ -31,7 +32,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio("Navegación", list(PAGES.keys()), label_visibility="collapsed")
     st.markdown("---")
-    st.caption("ORVANN Retail OS v1.0")
+    st.caption("ORVANN Retail OS v1.1")
     st.caption("Streetwear Premium — Medellín")
 
 # Mobile-friendly tabs at the top
@@ -42,15 +43,20 @@ for i, (name, key) in enumerate(PAGES.items()):
             page = name
 
 # Cargar la página seleccionada
-if page == "Vender":
+page_key = PAGES.get(page, "vender")
+
+if page_key == "vender":
     from app.pages.vender import render
     render()
-elif page == "Dashboard":
+elif page_key == "dashboard":
     from app.pages.dashboard import render
     render()
-elif page == "Inventario":
+elif page_key == "inventario":
     from app.pages.inventario import render
     render()
-elif page == "Admin":
+elif page_key == "historial":
+    from app.pages.historial import render
+    render()
+elif page_key == "admin":
     from app.pages.admin import render
     render()

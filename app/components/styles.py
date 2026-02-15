@@ -1,20 +1,22 @@
-"""CSS dark theme ORVANN — aplicar desde main.py."""
+"""CSS dark theme ORVANN v1.1 — tema cálido, aplicar desde main.py."""
 
 ORVANN_CSS = """
 <style>
     /* ── Variables globales ────────────────── */
     :root {
-        --bg-primary: #0a0a0a;
-        --bg-card: #1a1a1a;
-        --bg-input: #252525;
-        --text-primary: #e0e0e0;
-        --text-secondary: #999999;
-        --accent: #c4a35a;
-        --accent-dark: #8b7355;
-        --success: #4a7c59;
-        --danger: #8b3a3a;
-        --warning: #8b7832;
-        --border: #333333;
+        --bg-primary: #161618;
+        --bg-card: #1e1e22;
+        --bg-input: #28282e;
+        --text-primary: #e8e6e3;
+        --text-secondary: #a09c97;
+        --accent: #d4a843;
+        --accent-dark: #a8832f;
+        --accent-light: #e8c76a;
+        --success: #5a9e6f;
+        --danger: #c45c5c;
+        --warning: #c9a84c;
+        --info: #5b8fb9;
+        --border: #3a3a40;
     }
 
     /* ── Base ──────────────────────────────── */
@@ -55,6 +57,9 @@ ORVANN_CSS = """
         color: var(--accent) !important;
         font-weight: 700 !important;
     }
+    div[data-testid="stMetric"] div[data-testid="stMetricDelta"] svg {
+        display: inline !important;
+    }
 
     /* ── Inputs & Selects ─────────────────── */
     .stTextInput > div > div,
@@ -75,7 +80,7 @@ ORVANN_CSS = """
     /* ── Buttons ──────────────────────────── */
     .stButton > button {
         background-color: var(--accent) !important;
-        color: #0a0a0a !important;
+        color: #161618 !important;
         border: none !important;
         border-radius: 8px !important;
         font-weight: 600 !important;
@@ -83,8 +88,8 @@ ORVANN_CSS = """
         transition: all 0.2s ease !important;
     }
     .stButton > button:hover {
-        background-color: var(--accent-dark) !important;
-        color: #ffffff !important;
+        background-color: var(--accent-light) !important;
+        color: #161618 !important;
     }
     .stButton > button:active {
         transform: scale(0.98) !important;
@@ -125,10 +130,11 @@ ORVANN_CSS = """
         color: var(--text-secondary) !important;
         border-radius: 6px !important;
         padding: 8px 16px !important;
+        font-size: 0.95rem !important;
     }
     .stTabs [aria-selected="true"] {
         background-color: var(--accent) !important;
-        color: #0a0a0a !important;
+        color: #161618 !important;
     }
 
     /* ── Alerts ───────────────────────────── */
@@ -154,6 +160,13 @@ ORVANN_CSS = """
     /* ── Dividers ─────────────────────────── */
     hr {
         border-color: var(--border) !important;
+    }
+
+    /* ── Charts ───────────────────────────── */
+    .stPlotlyChart, .stAltairChart, .stBarChart {
+        background-color: var(--bg-card) !important;
+        border-radius: 8px !important;
+        padding: 8px !important;
     }
 
     /* ── Mobile adjustments ───────────────── */
@@ -187,6 +200,11 @@ ORVANN_CSS = """
         color: var(--accent);
         text-align: center;
         padding: 1rem 0;
+    }
+
+    /* ── Nav buttons at top ───────────────── */
+    div[data-testid="stHorizontalBlock"] .stButton > button {
+        font-size: 0.9rem !important;
     }
 </style>
 """

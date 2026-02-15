@@ -1,5 +1,6 @@
 """Lógica de negocio de ORVANN Retail OS."""
-from datetime import date, datetime
+import math
+from datetime import date, datetime, timedelta
 from app.database import query, execute, get_connection
 
 SOCIOS = ['JP', 'KATHE', 'ANDRES']
@@ -12,7 +13,6 @@ def registrar_venta(sku, cantidad, precio, metodo_pago, cliente=None,
     """Registra venta, descuenta stock. Si es crédito, crea registro en creditos_clientes."""
     conn = get_connection(db_path)
     try:
-        # Verificar stock
         prod = conn.execute("SELECT stock, nombre FROM productos WHERE sku = ?", (sku,)).fetchone()
         if prod is None:
             raise ValueError(f"Producto {sku} no existe")
@@ -29,11 +29,8 @@ def registrar_venta(sku, cantidad, precio, metodo_pago, cliente=None,
         """, (hoy, ahora, sku, cantidad, precio, descuento, total, metodo_pago, cliente, vendedor, notas))
 
         venta_id = cursor.lastrowid
-
-        # Descontar stock
         conn.execute("UPDATE productos SET stock = stock - ? WHERE sku = ?", (cantidad, sku))
 
-        # Si es crédito, crear registro
         if metodo_pago == 'Crédito':
             if not cliente:
                 raise ValueError("Venta a crédito requiere nombre de cliente")
@@ -44,6 +41,30 @@ def registrar_venta(sku, cantidad, precio, metodo_pago, cliente=None,
 
         conn.commit()
         return venta_id
+    finally:
+        conn.close()
+
+
+def anular_venta(venta_id, db_path=None):
+    """Revierte una venta: devuelve stock, elimina crédito si existe, borra venta."""
+    conn = get_connection(db_path)
+    try:
+        venta = conn.execute("SELECT * FROM ventas WHERE id = ?", (venta_id,)).fetchone()
+        if venta is None:
+            raise ValueError(f"Venta #{venta_id} no existe")
+
+        # Devolver stock
+        conn.execute("UPDATE productos SET stock = stock + ? WHERE sku = ?",
+                     (venta['cantidad'], venta['sku']))
+
+        # Eliminar crédito asociado si existe
+        conn.execute("DELETE FROM creditos_clientes WHERE venta_id = ?", (venta_id,))
+
+        # Eliminar venta
+        conn.execute("DELETE FROM ventas WHERE id = ?", (venta_id,))
+
+        conn.commit()
+        return dict(venta)
     finally:
         conn.close()
 
@@ -95,7 +116,6 @@ def get_ventas_mes(year, month, db_path=None):
     total_costo = sum((v.get('costo') or 0) * v['cantidad'] for v in ventas)
     total_unidades = sum(v['cantidad'] for v in ventas)
 
-    # Top productos
     from collections import Counter
     prod_count = Counter()
     prod_revenue = Counter()
@@ -115,38 +135,90 @@ def get_ventas_mes(year, month, db_path=None):
     }
 
 
+def get_ventas_rango(fecha_inicio, fecha_fin, db_path=None):
+    """Ventas en un rango de fechas."""
+    return query("""
+        SELECT v.*, p.nombre as producto_nombre, p.costo
+        FROM ventas v
+        LEFT JOIN productos p ON v.sku = p.sku
+        WHERE v.fecha >= ? AND v.fecha <= ?
+        ORDER BY v.fecha DESC, v.hora DESC
+    """, (fecha_inicio, fecha_fin), db_path=db_path)
+
+
+def get_ventas_semana(db_path=None):
+    """Ventas de la semana actual (lunes a hoy)."""
+    hoy = date.today()
+    lunes = hoy - timedelta(days=hoy.weekday())
+    ventas = get_ventas_rango(lunes.isoformat(), hoy.isoformat(), db_path=db_path)
+
+    total = sum(v['total'] for v in ventas)
+    unidades = sum(v['cantidad'] for v in ventas)
+    costo = sum((v.get('costo') or 0) * v['cantidad'] for v in ventas)
+
+    return {
+        'ventas': ventas,
+        'total': total,
+        'unidades': unidades,
+        'costo': costo,
+        'utilidad': total - costo,
+        'fecha_inicio': lunes.isoformat(),
+        'fecha_fin': hoy.isoformat(),
+    }
+
+
+def get_ventas_semana_anterior(db_path=None):
+    """Ventas de la semana anterior."""
+    hoy = date.today()
+    lunes_esta = hoy - timedelta(days=hoy.weekday())
+    domingo_pasado = lunes_esta - timedelta(days=1)
+    lunes_pasado = domingo_pasado - timedelta(days=domingo_pasado.weekday())
+
+    ventas = get_ventas_rango(lunes_pasado.isoformat(), domingo_pasado.isoformat(), db_path=db_path)
+    total = sum(v['total'] for v in ventas)
+    unidades = sum(v['cantidad'] for v in ventas)
+
+    return {'total': total, 'unidades': unidades}
+
+
+def get_ventas_diarias_mes(year, month, db_path=None):
+    """Ventas agrupadas por día para gráfico."""
+    fecha_inicio = f"{year}-{month:02d}-01"
+    if month == 12:
+        fecha_fin = f"{year + 1}-01-01"
+    else:
+        fecha_fin = f"{year}-{month + 1:02d}-01"
+
+    return query("""
+        SELECT fecha, SUM(total) as total_dia, SUM(cantidad) as unidades_dia
+        FROM ventas
+        WHERE fecha >= ? AND fecha < ?
+        GROUP BY fecha
+        ORDER BY fecha
+    """, (fecha_inicio, fecha_fin), db_path=db_path)
+
+
 # ── Punto de Equilibrio ──────────────────────────────────
 
 def calcular_punto_equilibrio(db_path=None):
-    """
-    Calcula punto de equilibrio mensual.
-    CF = costos fijos activos
-    Margen promedio ponderado = SUM(margen * stock) / SUM(stock)
-    """
+    """Calcula punto de equilibrio mensual."""
     costos = query("SELECT SUM(monto_mensual) as total FROM costos_fijos WHERE activo = 1", db_path=db_path)
     cf = costos[0]['total'] or 0
 
-    # Margen ponderado por stock
     productos = query("""
         SELECT precio_venta, costo, stock
-        FROM productos
-        WHERE stock > 0 AND precio_venta > 0
+        FROM productos WHERE stock > 0 AND precio_venta > 0
     """, db_path=db_path)
 
     if not productos:
-        # Si no hay stock, usar todos los productos
-        productos = query("""
-            SELECT precio_venta, costo, stock
-            FROM productos
-            WHERE precio_venta > 0
-        """, db_path=db_path)
+        productos = query("SELECT precio_venta, costo, stock FROM productos WHERE precio_venta > 0", db_path=db_path)
 
     total_margen_pond = 0
     total_stock = 0
     total_precio_pond = 0
 
     for p in productos:
-        stock = max(p['stock'], 1)  # mínimo 1 para promediar
+        stock = max(p['stock'], 1)
         margen = (p['precio_venta'] - p['costo']) / p['precio_venta'] if p['precio_venta'] > 0 else 0
         total_margen_pond += margen * stock
         total_stock += stock
@@ -159,7 +231,6 @@ def calcular_punto_equilibrio(db_path=None):
     pe_unidades = pe_pesos / ticket_prom if ticket_prom > 0 else 0
     pe_diario = pe_unidades / 30
 
-    # Ventas del mes actual
     hoy = date.today()
     ventas_mes = get_ventas_mes(hoy.year, hoy.month, db_path=db_path)
     ventas_acumuladas = ventas_mes['total_ventas']
@@ -189,41 +260,40 @@ def calcular_punto_equilibrio(db_path=None):
 def calcular_liquidacion_socios(db_path=None):
     """
     Calcula cuánto puso cada socio y cuánto le corresponde.
-    Gastos de ORVANN (pagados parejo) se dividen 33.3% cada uno.
+    Cada fila de gastos es un pago real de un socio específico.
+    No hay concepto de 'ORVANN' — cada pago tiene un responsable.
     """
-    gastos = query("SELECT * FROM gastos", db_path=db_path)
+    gastos = query("SELECT * FROM gastos ORDER BY fecha", db_path=db_path)
 
     aportes = {s: 0.0 for s in SOCIOS}
     total_real = 0.0
     por_categoria = {}
+    por_socio_categoria = {s: {} for s in SOCIOS}
 
     for g in gastos:
         monto = g['monto']
         pagado_por = g['pagado_por']
 
-        if pagado_por == 'ORVANN':
-            # Pagado parejo entre los 3
-            for s in SOCIOS:
-                aportes[s] += monto  # cada uno puso 'monto'
-            total_real += monto
-        elif pagado_por in SOCIOS:
+        if pagado_por in SOCIOS:
             aportes[pagado_por] += monto
-            total_real += monto
-        else:
-            total_real += monto
+
+        total_real += monto
 
         cat = g['categoria']
         por_categoria[cat] = por_categoria.get(cat, 0) + monto
 
+        if pagado_por in SOCIOS:
+            por_socio_categoria[pagado_por][cat] = por_socio_categoria[pagado_por].get(cat, 0) + monto
+
     # Cada socio le corresponde 33.3% del total
-    parte_cada_uno = total_real / 3
+    parte_cada_uno = total_real / 3 if total_real > 0 else 0
 
     saldos = {}
     for s in SOCIOS:
         saldos[s] = {
             'aportado': aportes[s],
             'le_corresponde': parte_cada_uno,
-            'saldo': aportes[s] - parte_cada_uno,  # positivo = le deben, negativo = debe
+            'saldo': aportes[s] - parte_cada_uno,
         }
 
     return {
@@ -232,21 +302,21 @@ def calcular_liquidacion_socios(db_path=None):
         'parte_cada_uno': parte_cada_uno,
         'saldos': saldos,
         'por_categoria': por_categoria,
+        'por_socio_categoria': por_socio_categoria,
+        'gastos': gastos,
     }
 
 
 # ── Caja ─────────────────────────────────────────────────
 
 def get_estado_caja(fecha=None, db_path=None):
-    """Estado de caja del día: efectivo inicio + ventas por método - gastos efectivo."""
+    """Estado de caja del día."""
     if fecha is None:
         fecha = date.today().isoformat()
 
-    # Buscar caja del día
     caja = query("SELECT * FROM caja_diaria WHERE fecha = ?", (fecha,), db_path=db_path)
     efectivo_inicio = caja[0]['efectivo_inicio'] if caja else 0
 
-    # Ventas del día por método
     ventas = query("""
         SELECT metodo_pago, SUM(total) as total
         FROM ventas WHERE fecha = ?
@@ -256,7 +326,6 @@ def get_estado_caja(fecha=None, db_path=None):
     totales_ventas = {v['metodo_pago']: v['total'] for v in ventas}
     ventas_efectivo = totales_ventas.get('Efectivo', 0)
 
-    # Gastos del día en efectivo
     gastos = query("""
         SELECT SUM(monto) as total
         FROM gastos WHERE fecha = ? AND metodo_pago = 'Efectivo'
@@ -288,9 +357,7 @@ def cerrar_caja(fecha, efectivo_real, notas=None, db_path=None):
             INSERT INTO caja_diaria (fecha, efectivo_inicio, efectivo_cierre_real, cerrada, notas)
             VALUES (?, ?, ?, 1, ?)
             ON CONFLICT(fecha) DO UPDATE SET
-                efectivo_cierre_real = ?,
-                cerrada = 1,
-                notas = ?
+                efectivo_cierre_real = ?, cerrada = 1, notas = ?
         """, (fecha, estado['efectivo_inicio'], efectivo_real, notas, efectivo_real, notas))
         conn.commit()
     finally:
@@ -306,7 +373,6 @@ def cerrar_caja(fecha, efectivo_real, notas=None, db_path=None):
 # ── Créditos ──────────────────────────────────────────────
 
 def get_creditos_pendientes(db_path=None):
-    """Lista de créditos pendientes de pago."""
     return query("""
         SELECT c.*, v.fecha as fecha_venta, v.sku, p.nombre as producto_nombre
         FROM creditos_clientes c
@@ -318,61 +384,39 @@ def get_creditos_pendientes(db_path=None):
 
 
 def registrar_pago_credito(credito_id, fecha_pago=None, db_path=None):
-    """Marca crédito como pagado."""
     if fecha_pago is None:
         fecha_pago = date.today().isoformat()
-    execute(
-        "UPDATE creditos_clientes SET pagado = 1, fecha_pago = ? WHERE id = ?",
-        (fecha_pago, credito_id), db_path=db_path
-    )
+    execute("UPDATE creditos_clientes SET pagado = 1, fecha_pago = ? WHERE id = ?",
+            (fecha_pago, credito_id), db_path=db_path)
 
 
 # ── Inventario ────────────────────────────────────────────
 
 def get_alertas_stock(db_path=None):
-    """Productos con stock <= stock_minimo."""
     return query("""
-        SELECT * FROM productos
-        WHERE stock <= stock_minimo
+        SELECT * FROM productos WHERE stock <= stock_minimo
         ORDER BY stock ASC, nombre
     """, db_path=db_path)
 
 
 def get_resumen_inventario(db_path=None):
-    """Resumen de inventario por categoría."""
     total = query("""
-        SELECT
-            COUNT(*) as total_skus,
-            SUM(stock) as total_unidades,
-            SUM(costo * stock) as valor_costo,
-            SUM(precio_venta * stock) as valor_venta
+        SELECT COUNT(*) as total_skus, SUM(stock) as total_unidades,
+               SUM(costo * stock) as valor_costo, SUM(precio_venta * stock) as valor_venta
         FROM productos
     """, db_path=db_path)
 
     por_categoria = query("""
-        SELECT
-            categoria,
-            COUNT(*) as skus,
-            SUM(stock) as unidades,
-            SUM(costo * stock) as valor_costo,
-            SUM(precio_venta * stock) as valor_venta
-        FROM productos
-        GROUP BY categoria
-        ORDER BY valor_venta DESC
+        SELECT categoria, COUNT(*) as skus, SUM(stock) as unidades,
+               SUM(costo * stock) as valor_costo, SUM(precio_venta * stock) as valor_venta
+        FROM productos GROUP BY categoria ORDER BY valor_venta DESC
     """, db_path=db_path)
 
-    return {
-        'total': total[0] if total else {},
-        'por_categoria': por_categoria,
-    }
+    return {'total': total[0] if total else {}, 'por_categoria': por_categoria}
 
 
 def agregar_stock(sku, cantidad, db_path=None):
-    """Agrega unidades al stock de un producto."""
-    execute(
-        "UPDATE productos SET stock = stock + ? WHERE sku = ?",
-        (cantidad, sku), db_path=db_path
-    )
+    execute("UPDATE productos SET stock = stock + ? WHERE sku = ?", (cantidad, sku), db_path=db_path)
 
 
 # ── Gastos ────────────────────────────────────────────────
@@ -387,19 +431,38 @@ def registrar_gasto(fecha, categoria, monto, descripcion, pagado_por,
         db_path=db_path)
 
 
-def get_gastos_mes(year, month, db_path=None):
-    """Gastos del mes con totales por categoría."""
-    fecha_inicio = f"{year}-{month:02d}-01"
-    if month == 12:
-        fecha_fin = f"{year + 1}-01-01"
-    else:
-        fecha_fin = f"{year}-{month + 1:02d}-01"
+def registrar_gasto_parejo(fecha, categoria, monto_total, descripcion,
+                           metodo_pago=None, es_inversion=0, notas=None, db_path=None):
+    """Registra un gasto dividido parejo entre los 3 socios. Crea 3 registros."""
+    parte = round(monto_total / 3)
+    resto = monto_total - (parte * 3)
+    ids = []
+    for i, socio in enumerate(SOCIOS):
+        m = parte + (resto if i == len(SOCIOS) - 1 else 0)
+        gid = registrar_gasto(fecha, categoria, m, descripcion, socio,
+                              metodo_pago, es_inversion, notas, db_path=db_path)
+        ids.append(gid)
+    return ids
 
-    gastos = query("""
-        SELECT * FROM gastos
-        WHERE fecha >= ? AND fecha < ?
-        ORDER BY fecha DESC
-    """, (fecha_inicio, fecha_fin), db_path=db_path)
+
+def registrar_gasto_personalizado(fecha, categoria, montos_por_socio, descripcion,
+                                  metodo_pago=None, es_inversion=0, notas=None, db_path=None):
+    """Registra un gasto con montos diferentes por socio. Solo crea registros para montos > 0."""
+    ids = []
+    for socio, monto in montos_por_socio.items():
+        if monto > 0:
+            gid = registrar_gasto(fecha, categoria, monto, descripcion, socio,
+                                  metodo_pago, es_inversion, notas, db_path=db_path)
+            ids.append(gid)
+    return ids
+
+
+def get_gastos_mes(year, month, db_path=None):
+    fecha_inicio = f"{year}-{month:02d}-01"
+    fecha_fin = f"{year + 1}-01-01" if month == 12 else f"{year}-{month + 1:02d}-01"
+
+    gastos = query("SELECT * FROM gastos WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC",
+                   (fecha_inicio, fecha_fin), db_path=db_path)
 
     por_categoria = {}
     total = 0
@@ -408,22 +471,23 @@ def get_gastos_mes(year, month, db_path=None):
         por_categoria[cat] = por_categoria.get(cat, 0) + g['monto']
         total += g['monto']
 
-    return {
-        'gastos': gastos,
-        'por_categoria': por_categoria,
-        'total': total,
-    }
+    return {'gastos': gastos, 'por_categoria': por_categoria, 'total': total}
+
+
+def get_gastos_rango(fecha_inicio, fecha_fin, db_path=None):
+    """Gastos en un rango de fechas."""
+    return query("""
+        SELECT * FROM gastos WHERE fecha >= ? AND fecha <= ? ORDER BY fecha DESC
+    """, (fecha_inicio, fecha_fin), db_path=db_path)
 
 
 # ── Productos ─────────────────────────────────────────────
 
 def get_productos(db_path=None):
-    """Todos los productos."""
     return query("SELECT * FROM productos ORDER BY categoria, nombre", db_path=db_path)
 
 
 def get_producto(sku, db_path=None):
-    """Un producto por SKU."""
     result = query("SELECT * FROM productos WHERE sku = ?", (sku,), db_path=db_path)
     return result[0] if result else None
 
@@ -431,19 +495,11 @@ def get_producto(sku, db_path=None):
 # ── Pedidos ───────────────────────────────────────────────
 
 def get_pedidos_pendientes(db_path=None):
-    """Pedidos pendientes de pago."""
-    return query("""
-        SELECT * FROM pedidos_proveedores
-        WHERE estado != 'Pagado'
-        ORDER BY fecha_pedido DESC
-    """, db_path=db_path)
+    return query("SELECT * FROM pedidos_proveedores WHERE estado != 'Pagado' ORDER BY fecha_pedido DESC",
+                 db_path=db_path)
 
 
 def get_total_deuda_proveedores(db_path=None):
-    """Total pendiente de pago a proveedores."""
-    result = query("""
-        SELECT SUM(total) as total
-        FROM pedidos_proveedores
-        WHERE estado != 'Pagado'
-    """, db_path=db_path)
+    result = query("SELECT SUM(total) as total FROM pedidos_proveedores WHERE estado != 'Pagado'",
+                   db_path=db_path)
     return result[0]['total'] or 0 if result else 0

@@ -15,10 +15,8 @@ SOCIO_RENAME = {'MILE': 'ANDRES'}
 
 TALLAS_CONOCIDAS = ['S', 'M', 'L', 'XL', '2XL']
 
-CATEGORIAS_CONOCIDAS = [
-    'Camisa', 'Hoodie', 'Chompa', 'Buzo', 'Chaqueta',
-    'Jogger', 'Sudadera', 'Pantaloneta',
-]
+# Fecha de apertura de la tienda
+FECHA_APERTURA = '2026-02-15'
 
 
 def fix_socio(nombre):
@@ -38,7 +36,6 @@ def parse_producto(nombre):
     talla = None
     color = None
 
-    # Detectar categoría
     nombre_lower = nombre.lower()
     if nombre_lower.startswith('camisa'):
         categoria = 'Camisa'
@@ -57,7 +54,6 @@ def parse_producto(nombre):
     elif nombre_lower.startswith('pantaloneta'):
         categoria = 'Pantaloneta'
 
-    # Buscar talla en el nombre
     parts = nombre.split()
     talla_idx = None
     for i, part in enumerate(parts):
@@ -66,15 +62,8 @@ def parse_producto(nombre):
             talla_idx = i
             break
 
-    # El color es todo lo que viene después de la talla
     if talla_idx is not None and talla_idx + 1 < len(parts):
         color = ' '.join(parts[talla_idx + 1:]).strip()
-    elif talla_idx is None:
-        # Sin talla, intentar extraer color del final
-        # Para productos como "Camisa Réplica 1.1" no hay color
-        pass
-
-    # Limpiar color vacío
     if color == '':
         color = None
 
@@ -116,11 +105,8 @@ def migrate_productos(ws, conn):
 
         # Manejar SKUs duplicados (ej: SUD-NEG-L aparece 3 veces)
         if sku in seen_skus:
-            # Generar SKU único basado en el nombre real
-            # Extraer la talla real del nombre para diferenciar
             _, real_talla, _ = parse_producto(nombre)
             if real_talla:
-                # Reemplazar la talla en el SKU
                 base_sku = sku.rsplit('-', 1)[0] if '-' in sku else sku
                 new_sku = f"{base_sku}-{real_talla}"
                 if new_sku in seen_skus:
@@ -164,7 +150,6 @@ def migrate_ventas(ws, conn):
         if cliente:
             cliente = str(cliente).strip()
 
-        # Renombrar método de pago para consistencia
         if 'cr' in metodo_pago.lower():
             metodo_pago = 'Crédito'
         elif 'transf' in metodo_pago.lower():
@@ -175,7 +160,7 @@ def migrate_ventas(ws, conn):
             metodo_pago = 'Efectivo'
 
         fecha_str = to_date_str(fecha)
-        total = precio_venta  # cantidad=1, descuento=0
+        total = precio_venta
 
         c.execute("""
             INSERT INTO ventas (fecha, sku, cantidad, precio_unitario, descuento_pct, total, metodo_pago, cliente, notas)
@@ -185,7 +170,6 @@ def migrate_ventas(ws, conn):
         venta_id = c.lastrowid
         count += 1
 
-        # Si es crédito, crear registro en creditos_clientes
         if metodo_pago == 'Crédito' and cliente:
             c.execute("""
                 INSERT INTO creditos_clientes (venta_id, cliente, monto, fecha_credito, pagado, notas)
@@ -201,96 +185,56 @@ def migrate_ventas(ws, conn):
 def migrate_gastos(ws, conn):
     """
     Migra hoja Gastos -> tabla gastos.
-    Maneja gastos triplicados: agrupa por (fecha, descripción) y almacena
-    el monto real (no triplicado) con detalle de quién pagó.
+    CADA FILA del Excel es un pago REAL de un socio.
+    NO se deduplica nada.
+    Solo se importan filas donde hay fecha (col A) y monto (col C).
+    Columnas I-N son resúmenes del Excel y se ignoran.
     """
     c = conn.cursor()
+    count = 0
+    totals_by_socio = {}
 
-    # Leer todos los gastos crudos
-    raw = []
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row, values_only=False):
         vals = {cell.column_letter: cell.value for cell in row}
         fecha = vals.get('A')
-        if fecha is None:
-            break
-        raw.append({
-            'fecha': to_date_str(fecha),
-            'categoria': str(vals.get('B', '')).strip(),
-            'monto': float(vals.get('C', 0) or 0),
-            'descripcion': str(vals.get('D', '')).strip(),
-            'metodo_pago': str(vals.get('E', '')).strip() if vals.get('E') else None,
-            'responsable': fix_socio(str(vals.get('F', '')).strip()) if vals.get('F') else None,
-            'notas': str(vals.get('G', '')).strip() if vals.get('G') else None,
-        })
+        monto = vals.get('C')
 
-    print(f"  Gastos crudos del Excel: {len(raw)} filas")
+        # Solo importar filas con fecha Y monto
+        if fecha is None or monto is None:
+            continue
 
-    # Agrupar por (fecha, descripcion) para detectar triplicados
-    from collections import defaultdict
-    groups = defaultdict(list)
-    for g in raw:
-        key = (g['fecha'], g['descripcion'])
-        groups[key].append(g)
+        monto = float(monto)
+        if monto == 0:
+            continue
 
-    count = 0
-    for (fecha, descripcion), items in groups.items():
-        categoria = items[0]['categoria']
-        metodo_pago = items[0]['metodo_pago']
+        fecha_str = to_date_str(fecha)
+        categoria = str(vals.get('B', '')).strip() if vals.get('B') else ''
+        descripcion = str(vals.get('D', '')).strip() if vals.get('D') else ''
+        metodo_pago = str(vals.get('E', '')).strip() if vals.get('E') else None
+        responsable = fix_socio(str(vals.get('F', '')).strip()) if vals.get('F') else None
+        notas = str(vals.get('G', '')).strip() if vals.get('G') else None
+        if notas == 'None' or notas == '':
+            notas = None
 
-        # Determinar si es inversión: gastos dic 2025 - ene 2026
-        es_inversion = 0
-        if fecha:
-            y, m = int(fecha[:4]), int(fecha[5:7])
-            if (y == 2025 and m == 12) or (y == 2026 and m == 1) or (y == 2025 and m in [1, 2]):
-                es_inversion = 1
+        # Gastos antes de la apertura (2026-02-15) son inversión
+        es_inversion = 1 if fecha_str and fecha_str < FECHA_APERTURA else 0
 
-        if len(items) == 3:
-            # Triplicado: verificar si los 3 montos son iguales
-            montos = [it['monto'] for it in items]
-            responsables = [it['responsable'] for it in items]
+        pagado_por = responsable or 'ORVANN'
 
-            if montos[0] == montos[1] == montos[2]:
-                # Los 3 pagaron igual -> pagado_por = ORVANN
-                monto = montos[0]
-                pagado_por = 'ORVANN'
-                notas_parts = []
-                for it in items:
-                    if it['notas'] and it['notas'] != 'None':
-                        notas_parts.append(f"{it['responsable']}: {it['notas']}")
-                notas = '; '.join(notas_parts) if notas_parts else None
-            else:
-                # Montos diferentes -> quien más puso
-                monto = max(montos)
-                max_idx = montos.index(monto)
-                pagado_por = responsables[max_idx]
-                monto = sum(montos)  # El total real es la suma de los 3
-                notas_parts = []
-                for it in items:
-                    notas_parts.append(f"{it['responsable']}: ${it['monto']:,.0f}")
-                    if it['notas'] and it['notas'] != 'None':
-                        notas_parts[-1] += f" ({it['notas']})"
-                notas = '; '.join(notas_parts)
+        c.execute("""
+            INSERT INTO gastos (fecha, categoria, monto, descripcion, metodo_pago, pagado_por, es_inversion, notas)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (fecha_str, categoria, monto, descripcion, metodo_pago, pagado_por, es_inversion, notas))
+        count += 1
 
-            c.execute("""
-                INSERT INTO gastos (fecha, categoria, monto, descripcion, metodo_pago, pagado_por, es_inversion, notas)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (fecha, categoria, monto, descripcion, metodo_pago, pagado_por, es_inversion, notas))
-            count += 1
-        else:
-            # No triplicado: insertar cada gasto individualmente
-            for it in items:
-                pagado_por = it['responsable'] or 'ORVANN'
-                notas = it['notas'] if it['notas'] != 'None' else None
-
-                c.execute("""
-                    INSERT INTO gastos (fecha, categoria, monto, descripcion, metodo_pago, pagado_por, es_inversion, notas)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (fecha, it['categoria'], it['monto'], it['descripcion'],
-                      it['metodo_pago'], pagado_por, es_inversion, notas))
-                count += 1
+        # Track totals per socio
+        totals_by_socio[pagado_por] = totals_by_socio.get(pagado_por, 0) + monto
 
     conn.commit()
-    print(f"  Gastos reales: {count} registros (de {len(raw)} filas crudas)")
+    print(f"  Gastos: {count} registros (cada fila del Excel = un pago real)")
+    for socio, total in sorted(totals_by_socio.items()):
+        print(f"    {socio}: ${total:,.0f}")
+    print(f"    TOTAL: ${sum(totals_by_socio.values()):,.0f}")
     return count
 
 
@@ -306,7 +250,6 @@ def migrate_costos_fijos(ws, conn):
         monto = vals.get('B')
 
         if concepto is None or monto is None:
-            # Saltar filas vacías y "TOTAL"
             if concepto and 'total' in str(concepto).lower():
                 continue
             if monto is None:
@@ -334,7 +277,8 @@ def migrate_costos_fijos(ws, conn):
 
 
 def migrate_pedidos(ws, conn):
-    """Migra hoja Pedidos Proveedores -> tabla pedidos_proveedores."""
+    """Migra hoja Pedidos Proveedores -> tabla pedidos_proveedores.
+    Corrige fechas 2025-02-XX -> 2026-02-XX (typos del Excel)."""
     c = conn.cursor()
     count = 0
 
@@ -355,15 +299,20 @@ def migrate_pedidos(ws, conn):
         if notas == 'None':
             notas = None
 
-        # Renombrar MILE en notas
         if notas:
             notas = notas.replace('MILE', 'ANDRES')
+
+        fecha_str = to_date_str(fecha)
+
+        # TAREA 4: Fix 2025-02-XX -> 2026-02-XX (Excel typo)
+        if fecha_str and fecha_str.startswith('2025-02'):
+            fecha_str = '2026' + fecha_str[4:]
 
         c.execute("""
             INSERT INTO pedidos_proveedores
             (fecha_pedido, proveedor, descripcion, unidades, costo_unitario, total, estado, fecha_entrega_est, notas)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (to_date_str(fecha), proveedor, descripcion, unidades, costo_unitario, total, estado, fecha_pago, notas))
+        """, (fecha_str, proveedor, descripcion, unidades, costo_unitario, total, estado, fecha_pago, notas))
         count += 1
 
     conn.commit()
@@ -382,7 +331,6 @@ def run_migration(excel_path=None, db_path=None):
     print(f"Base de datos: {os.path.abspath(db_path)}")
     print()
 
-    # Crear tablas primero
     from scripts.create_db import create_tables
     create_tables(db_path)
 
@@ -393,27 +341,21 @@ def run_migration(excel_path=None, db_path=None):
         print("Migrando datos...")
         print()
 
-        # 1. Productos
         ws = wb['Inventario']
         n_prod, total_stock = migrate_productos(ws, conn)
 
-        # 2. Ventas
         ws = wb['Ventas']
         n_ventas, n_creditos = migrate_ventas(ws, conn)
 
-        # 3. Gastos
         ws = wb['Gastos']
         n_gastos = migrate_gastos(ws, conn)
 
-        # 4. Costos fijos
         ws = wb['Costos Fijos']
         n_cf, total_cf = migrate_costos_fijos(ws, conn)
 
-        # 5. Pedidos
         ws = wb['Pedidos Proveedores']
         n_pedidos = migrate_pedidos(ws, conn)
 
-        # Resumen
         print()
         print("=" * 50)
         print("RESUMEN DE MIGRACIÓN")
@@ -421,7 +363,7 @@ def run_migration(excel_path=None, db_path=None):
         print(f"  Productos:     {n_prod} SKUs ({total_stock} unidades)")
         print(f"  Ventas:        {n_ventas} registros")
         print(f"  Créditos:      {n_creditos} registros")
-        print(f"  Gastos:        {n_gastos} registros reales")
+        print(f"  Gastos:        {n_gastos} registros (cada fila = pago real)")
         print(f"  Costos fijos:  {n_cf} rubros (${total_cf:,.0f}/mes)")
         print(f"  Pedidos:       {n_pedidos} registros")
         print("=" * 50)
