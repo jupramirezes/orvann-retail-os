@@ -1,10 +1,10 @@
-"""Vista Historial — Ventas y gastos históricos con filtros. v1.1"""
+"""Vista Historial — Ventas y gastos históricos con filtros. v1.4"""
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 import io
 
-from app.models import get_ventas_rango, get_gastos_rango, get_ventas_diarias_mes
+from app.models import get_ventas_rango, get_gastos_rango
 from app.components.helpers import fmt_cop
 
 
@@ -85,11 +85,20 @@ def render_historial_ventas():
     if filtro_vendedor != 'Todos':
         filtered = filtered[filtered['vendedor'] == filtro_vendedor]
 
-    # Tabla
+    # Tabla — formateada
     cols_show = ['fecha', 'hora', 'producto_nombre', 'cantidad', 'total', 'metodo_pago', 'vendedor', 'cliente']
     cols_exist = [c for c in cols_show if c in filtered.columns]
     display = filtered[cols_exist].copy()
     display = display.fillna('').replace('None', '')
+    # Formatear montos y fechas
+    if 'total' in display.columns:
+        display['total'] = filtered['total'].apply(fmt_cop)
+    if 'fecha' in display.columns:
+        display['fecha'] = pd.to_datetime(filtered['fecha']).dt.strftime('%d %b')
+    if 'hora' in display.columns:
+        display['hora'] = display['hora'].astype(str).str[:5]
+    if 'producto_nombre' in display.columns:
+        display['producto_nombre'] = display['producto_nombre'].astype(str).str[:25]
 
     st.dataframe(
         display.rename(columns={
@@ -101,13 +110,40 @@ def render_historial_ventas():
         use_container_width=True, hide_index=True,
     )
 
-    # Gráfico diario
+    # Gráfico Altair — ventas por día con colores ORVANN
     if len(filtered) > 1:
         st.markdown("#### Ventas por día")
-        df_diario = filtered.groupby('fecha').agg({'total': 'sum', 'cantidad': 'sum'}).reset_index()
-        df_diario['fecha'] = pd.to_datetime(df_diario['fecha'])
-        df_diario = df_diario.set_index('fecha')
-        st.bar_chart(df_diario['total'], use_container_width=True)
+        try:
+            import altair as alt
+            df_diario = filtered.groupby('fecha').agg({'total': 'sum'}).reset_index()
+            df_diario['fecha'] = pd.to_datetime(df_diario['fecha'])
+
+            chart = alt.Chart(df_diario).mark_bar(
+                color='#B8860B',
+                cornerRadiusTopLeft=4,
+                cornerRadiusTopRight=4,
+            ).encode(
+                x=alt.X('fecha:T', title='', axis=alt.Axis(format='%d %b', labelAngle=-45)),
+                y=alt.Y('total:Q', title='Ventas ($)', axis=alt.Axis(format=',.0f')),
+                tooltip=[
+                    alt.Tooltip('fecha:T', title='Fecha', format='%d %b %Y'),
+                    alt.Tooltip('total:Q', title='Total', format='$,.0f'),
+                ],
+            ).configure_view(
+                strokeWidth=0,
+            ).configure(
+                background='#FFFFFF',
+                font='-apple-system, sans-serif',
+            ).properties(
+                height=250,
+            )
+            st.altair_chart(chart, use_container_width=True)
+        except ImportError:
+            # Fallback si altair no está instalado
+            df_diario = filtered.groupby('fecha').agg({'total': 'sum'}).reset_index()
+            df_diario['fecha'] = pd.to_datetime(df_diario['fecha'])
+            df_diario = df_diario.set_index('fecha')
+            st.bar_chart(df_diario['total'], use_container_width=True)
 
     # Exportar a Excel
     st.markdown("---")
@@ -186,12 +222,15 @@ def render_historial_gastos():
     for cat, total in cat_totals.items():
         st.text(f"  {cat}: {fmt_cop(total)}")
 
-    # Tabla
+    # Tabla — formateada
     cols_show = ['fecha', 'categoria', 'monto', 'descripcion', 'pagado_por', 'metodo_pago']
     cols_exist = [c for c in cols_show if c in filtered.columns]
     display = filtered[cols_exist].copy()
     display = display.fillna('').replace('None', '')
     display['monto'] = filtered['monto'].apply(fmt_cop)
+    if 'fecha' in display.columns:
+        display['fecha'] = pd.to_datetime(filtered['fecha']).dt.strftime('%d %b')
+
     st.dataframe(
         display.rename(columns={
             'fecha': 'Fecha', 'categoria': 'Categoría', 'monto': 'Monto',
