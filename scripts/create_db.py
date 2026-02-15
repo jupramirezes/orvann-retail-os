@@ -1,4 +1,4 @@
-"""Crea las 7 tablas de ORVANN Retail OS. Dual SQLite/PostgreSQL. v1.3"""
+"""Crea las 7 tablas de ORVANN Retail OS. Dual SQLite/PostgreSQL. v1.4"""
 import sqlite3
 import os
 
@@ -220,6 +220,24 @@ def migrate_v13(db_path=None):
         conn.close()
 
 
+def migrate_v14(db_path=None):
+    """Fix vendedor NULL en ventas migradas desde Excel. v1.4"""
+    if db_path is None:
+        db_path = DB_PATH
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    try:
+        updated = conn.execute(
+            "UPDATE ventas SET vendedor = 'JP' WHERE vendedor IS NULL OR vendedor = ''"
+        ).rowcount
+        if updated > 0:
+            conn.commit()
+            print(f"Migration v1.4: fixed {updated} ventas with NULL vendedor → JP")
+    finally:
+        conn.close()
+
+
 def ensure_tables():
     """Crea tablas en el backend activo. Idempotente (IF NOT EXISTS)."""
     database_url = os.environ.get('DATABASE_URL', '')
@@ -228,6 +246,7 @@ def ensure_tables():
     else:
         create_tables()
         migrate_v13()
+        migrate_v14()
 
 
 if __name__ == '__main__':

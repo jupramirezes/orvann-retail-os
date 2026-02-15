@@ -49,6 +49,10 @@ def render_historial_ventas():
 
     df = pd.DataFrame(ventas)
 
+    # Limpiar None en vendedor (ventas migradas del Excel)
+    if 'vendedor' in df.columns:
+        df['vendedor'] = df['vendedor'].fillna('JP').replace('None', 'JP').replace('', 'JP')
+
     # Métricas del rango
     total_ventas = df['total'].sum()
     total_unidades = df['cantidad'].sum()
@@ -82,15 +86,16 @@ def render_historial_ventas():
         filtered = filtered[filtered['vendedor'] == filtro_vendedor]
 
     # Tabla
-    cols_show = ['fecha', 'hora', 'sku', 'producto_nombre', 'cantidad', 'precio_unitario', 'total', 'metodo_pago', 'vendedor', 'cliente']
+    cols_show = ['fecha', 'hora', 'producto_nombre', 'cantidad', 'total', 'metodo_pago', 'vendedor', 'cliente']
     cols_exist = [c for c in cols_show if c in filtered.columns]
     display = filtered[cols_exist].copy()
+    display = display.fillna('').replace('None', '')
 
     st.dataframe(
         display.rename(columns={
-            'fecha': 'Fecha', 'hora': 'Hora', 'sku': 'SKU',
+            'fecha': 'Fecha', 'hora': 'Hora',
             'producto_nombre': 'Producto', 'cantidad': 'Cant.',
-            'precio_unitario': 'Precio', 'total': 'Total',
+            'total': 'Total',
             'metodo_pago': 'Método', 'vendedor': 'Vendedor', 'cliente': 'Cliente',
         }),
         use_container_width=True, hide_index=True,
@@ -182,18 +187,16 @@ def render_historial_gastos():
         st.text(f"  {cat}: {fmt_cop(total)}")
 
     # Tabla
-    cols_show = ['fecha', 'categoria', 'monto', 'descripcion', 'pagado_por', 'metodo_pago', 'es_inversion']
+    cols_show = ['fecha', 'categoria', 'monto', 'descripcion', 'pagado_por', 'metodo_pago']
     cols_exist = [c for c in cols_show if c in filtered.columns]
     display = filtered[cols_exist].copy()
-    display['monto'] = display['monto'].apply(fmt_cop)
-    if 'es_inversion' in display.columns:
-        display['es_inversion'] = display['es_inversion'].apply(lambda x: 'Sí' if x else 'No')
-
+    display = display.fillna('').replace('None', '')
+    display['monto'] = filtered['monto'].apply(fmt_cop)
     st.dataframe(
         display.rename(columns={
             'fecha': 'Fecha', 'categoria': 'Categoría', 'monto': 'Monto',
             'descripcion': 'Descripción', 'pagado_por': 'Pagado por',
-            'metodo_pago': 'Método', 'es_inversion': 'Inversión',
+            'metodo_pago': 'Método',
         }),
         use_container_width=True, hide_index=True,
     )

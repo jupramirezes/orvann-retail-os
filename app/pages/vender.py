@@ -120,7 +120,7 @@ def render():
                 'Producto': nombre_corto,
                 'Total': fmt_cop(v['total']),
                 'M': met_letra,
-                'Quien': v.get('vendedor', ''),
+                'Quien': v.get('vendedor') or 'JP',
             })
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True, hide_index=True)
