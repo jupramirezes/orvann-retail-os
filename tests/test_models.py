@@ -1,4 +1,4 @@
-"""Tests para la lógica de negocio ORVANN. v1.1"""
+"""Tests para la lógica de negocio ORVANN. v1.2"""
 import sqlite3
 import pytest
 from datetime import date
@@ -13,9 +13,39 @@ from app.models import (
     registrar_gasto,
     registrar_gasto_parejo,
     registrar_gasto_personalizado,
+    # v1.2 — Caja
+    abrir_caja,
+    cerrar_caja,
+    # v1.2 — Gastos CRUD
+    editar_gasto,
+    eliminar_gasto,
+    # v1.2 — Productos CRUD
+    get_productos,
+    get_producto,
+    crear_producto,
+    editar_producto,
+    eliminar_producto,
+    # v1.2 — Costos Fijos CRUD
+    get_costos_fijos,
+    crear_costo_fijo,
+    editar_costo_fijo,
+    eliminar_costo_fijo,
+    # v1.2 — Pedidos CRUD
+    get_pedidos,
+    registrar_pedido,
+    pagar_pedido,
+    recibir_mercancia,
+    editar_pedido,
+    eliminar_pedido,
+    get_pedidos_pendientes,
+    get_total_deuda_proveedores,
+    # Ventas helpers
+    get_ventas_dia,
 )
 from app.database import execute, query
 
+
+# ── Tests originales v1.1 ─────────────────────────────────
 
 def test_punto_equilibrio(db_with_data):
     """CF=~1.9M, margen promedio calculado dinámicamente."""
@@ -216,3 +246,470 @@ def test_gasto_individual(db_with_data):
     assert len(gastos) == 1
     assert gastos[0]['pagado_por'] == 'JP'
     assert gastos[0]['monto'] == 50000
+
+
+# ── Tests v1.2 — Caja ─────────────────────────────────────
+
+def test_abrir_caja(db_with_data):
+    """Abrir caja registra efectivo inicio y marca caja como abierta."""
+    db = db_with_data
+    hoy = date.today().isoformat()
+    result = abrir_caja(fecha=hoy, efectivo_inicio=200000, db_path=db)
+
+    assert result['fecha'] == hoy
+    assert result['efectivo_inicio'] == 200000
+
+    estado = get_estado_caja(fecha=hoy, db_path=db)
+    assert estado['caja_abierta'] is True
+    assert estado['efectivo_inicio'] == 200000
+    assert estado['cerrada'] == 0
+
+
+def test_abrir_caja_actualiza_si_existe(db_with_data):
+    """Si la caja ya fue abierta, abrir de nuevo actualiza el monto."""
+    db = db_with_data
+    hoy = date.today().isoformat()
+    abrir_caja(fecha=hoy, efectivo_inicio=100000, db_path=db)
+    abrir_caja(fecha=hoy, efectivo_inicio=250000, db_path=db)
+
+    estado = get_estado_caja(fecha=hoy, db_path=db)
+    assert estado['efectivo_inicio'] == 250000
+
+
+def test_cerrar_caja(db_with_data):
+    """Cerrar caja calcula diferencia correctamente."""
+    db = db_with_data
+    hoy = date.today().isoformat()
+    abrir_caja(fecha=hoy, efectivo_inicio=100000, db_path=db)
+
+    # Registrar venta en efectivo
+    registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+
+    # Esperado = 100000 + 75000 = 175000
+    result = cerrar_caja(fecha=hoy, efectivo_real=180000, db_path=db)
+
+    assert result['efectivo_esperado'] == pytest.approx(175000)
+    assert result['efectivo_real'] == 180000
+    assert result['diferencia'] == pytest.approx(5000)
+
+    estado = get_estado_caja(fecha=hoy, db_path=db)
+    assert estado['cerrada'] == 1
+
+
+def test_estado_caja_con_gastos_efectivo(db_with_data):
+    """Gastos en efectivo reducen el efectivo esperado."""
+    db = db_with_data
+    hoy = date.today().isoformat()
+    abrir_caja(fecha=hoy, efectivo_inicio=200000, db_path=db)
+
+    registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+    registrar_gasto(
+        fecha=hoy, categoria='Transporte', monto=30000,
+        descripcion='Taxi', pagado_por='JP', metodo_pago='Efectivo', db_path=db,
+    )
+
+    estado = get_estado_caja(fecha=hoy, db_path=db)
+    # Esperado = 200000 + 75000 - 30000 = 245000
+    assert estado['efectivo_esperado'] == pytest.approx(245000)
+    assert estado['gastos_efectivo'] == pytest.approx(30000)
+
+
+# ── Tests v1.2 — Editar/Eliminar Gastos ────────────────────
+
+def test_editar_gasto(db_with_data):
+    """Editar gasto cambia solo los campos proporcionados."""
+    db = db_with_data
+    gid = registrar_gasto(
+        fecha='2026-02-10', categoria='Transporte', monto=50000,
+        descripcion='Original', pagado_por='JP', db_path=db,
+    )
+
+    editar_gasto(gid, monto=60000, descripcion='Editado', db_path=db)
+
+    gastos = query("SELECT * FROM gastos WHERE id = ?", (gid,), db_path=db)
+    assert len(gastos) == 1
+    assert gastos[0]['monto'] == 60000
+    assert gastos[0]['descripcion'] == 'Editado'
+    # Campos no editados permanecen
+    assert gastos[0]['pagado_por'] == 'JP'
+    assert gastos[0]['categoria'] == 'Transporte'
+
+
+def test_editar_gasto_sin_campos_no_cambia(db_with_data):
+    """Editar sin proporcionar campos no hace nada."""
+    db = db_with_data
+    gid = registrar_gasto(
+        fecha='2026-02-10', categoria='Transporte', monto=50000,
+        descripcion='Sin cambios', pagado_por='JP', db_path=db,
+    )
+
+    editar_gasto(gid, db_path=db)  # Sin campos
+
+    gastos = query("SELECT * FROM gastos WHERE id = ?", (gid,), db_path=db)
+    assert gastos[0]['monto'] == 50000
+    assert gastos[0]['descripcion'] == 'Sin cambios'
+
+
+def test_eliminar_gasto(db_with_data):
+    """Eliminar gasto lo borra de la BD."""
+    db = db_with_data
+    gid = registrar_gasto(
+        fecha='2026-02-10', categoria='Transporte', monto=50000,
+        descripcion='A borrar', pagado_por='JP', db_path=db,
+    )
+
+    gastos_antes = query("SELECT * FROM gastos WHERE id = ?", (gid,), db_path=db)
+    assert len(gastos_antes) == 1
+
+    eliminar_gasto(gid, db_path=db)
+
+    gastos_despues = query("SELECT * FROM gastos WHERE id = ?", (gid,), db_path=db)
+    assert len(gastos_despues) == 0
+
+
+# ── Tests v1.2 — Productos CRUD ────────────────────────────
+
+def test_crear_producto(db_path):
+    """Crear un producto nuevo con todos los campos."""
+    crear_producto(
+        sku='NEW-CAM-M', nombre='Camisa Nueva M', categoria='Camisa',
+        talla='M', color='Rojo', costo=40000, precio_venta=80000,
+        stock=15, stock_minimo=5, proveedor='YOUR BRAND', db_path=db_path,
+    )
+
+    prod = get_producto('NEW-CAM-M', db_path=db_path)
+    assert prod is not None
+    assert prod['nombre'] == 'Camisa Nueva M'
+    assert prod['costo'] == 40000
+    assert prod['precio_venta'] == 80000
+    assert prod['stock'] == 15
+    assert prod['stock_minimo'] == 5
+
+
+def test_editar_producto(db_with_data):
+    """Editar producto cambia solo campos proporcionados."""
+    db = db_with_data
+    editar_producto('CAM-TEST-S', costo=45000, precio_venta=90000, db_path=db)
+
+    prod = get_producto('CAM-TEST-S', db_path=db)
+    assert prod['costo'] == 45000
+    assert prod['precio_venta'] == 90000
+    # Campos no editados permanecen
+    assert prod['nombre'] == 'Camisa Test S Negro'
+    assert prod['stock'] == 10
+
+
+def test_editar_producto_stock(db_with_data):
+    """Editar stock directamente (sin agregar_stock)."""
+    db = db_with_data
+    editar_producto('HOOD-TEST-L', stock=20, db_path=db)
+
+    prod = get_producto('HOOD-TEST-L', db_path=db)
+    assert prod['stock'] == 20
+
+
+def test_eliminar_producto_sin_ventas(db_with_data):
+    """Se puede eliminar un producto sin ventas."""
+    db = db_with_data
+
+    prod_antes = get_producto('NO-STOCK', db_path=db)
+    assert prod_antes is not None
+
+    eliminar_producto('NO-STOCK', db_path=db)
+
+    prod_despues = get_producto('NO-STOCK', db_path=db)
+    assert prod_despues is None
+
+
+def test_eliminar_producto_con_ventas_falla(db_with_data):
+    """No se puede eliminar un producto con ventas asociadas."""
+    db = db_with_data
+
+    # Registrar una venta
+    registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+
+    # Intentar eliminar debe fallar
+    with pytest.raises(ValueError, match="tiene .* ventas asociadas"):
+        eliminar_producto('CAM-TEST-S', db_path=db)
+
+
+def test_get_productos(db_with_data):
+    """get_productos retorna todos los productos."""
+    db = db_with_data
+    prods = get_productos(db_path=db)
+    assert len(prods) == 4  # 4 productos en fixture
+
+
+# ── Tests v1.2 — Costos Fijos CRUD ─────────────────────────
+
+def test_get_costos_fijos(db_with_data):
+    """get_costos_fijos retorna los costos del fixture."""
+    db = db_with_data
+    costos = get_costos_fijos(db_path=db)
+    assert len(costos) == 6  # 6 costos en fixture
+    conceptos = [c['concepto'] for c in costos]
+    assert 'Arriendo' in conceptos
+    assert 'Servicios' in conceptos
+
+
+def test_crear_costo_fijo(db_path):
+    """Crear un nuevo costo fijo."""
+    cid = crear_costo_fijo('Contador', 200000, db_path=db_path)
+    assert cid is not None
+
+    costos = get_costos_fijos(db_path=db_path)
+    assert len(costos) == 1
+    assert costos[0]['concepto'] == 'Contador'
+    assert costos[0]['monto_mensual'] == 200000
+    assert costos[0]['activo'] == 1
+
+
+def test_editar_costo_fijo(db_with_data):
+    """Editar costo fijo cambia campos proporcionados."""
+    db = db_with_data
+    costos = get_costos_fijos(db_path=db)
+    arriendo = [c for c in costos if c['concepto'] == 'Arriendo'][0]
+
+    editar_costo_fijo(arriendo['id'], monto_mensual=1300000, db_path=db)
+
+    costos_despues = get_costos_fijos(db_path=db)
+    arriendo_despues = [c for c in costos_despues if c['concepto'] == 'Arriendo'][0]
+    assert arriendo_despues['monto_mensual'] == 1300000
+
+
+def test_desactivar_costo_fijo(db_with_data):
+    """Desactivar un costo fijo afecta el punto de equilibrio."""
+    db = db_with_data
+    pe_antes = calcular_punto_equilibrio(db_path=db)
+
+    costos = get_costos_fijos(db_path=db)
+    arriendo = [c for c in costos if c['concepto'] == 'Arriendo'][0]
+    editar_costo_fijo(arriendo['id'], activo=0, db_path=db)
+
+    pe_despues = calcular_punto_equilibrio(db_path=db)
+    assert pe_despues['cf'] < pe_antes['cf']
+    assert pe_despues['cf'] == pytest.approx(pe_antes['cf'] - 1210000, rel=0.01)
+
+
+def test_eliminar_costo_fijo(db_with_data):
+    """Eliminar costo fijo lo remueve de la BD."""
+    db = db_with_data
+    costos = get_costos_fijos(db_path=db)
+    imprevistos = [c for c in costos if c['concepto'] == 'Imprevistos'][0]
+
+    eliminar_costo_fijo(imprevistos['id'], db_path=db)
+
+    costos_despues = get_costos_fijos(db_path=db)
+    conceptos = [c['concepto'] for c in costos_despues]
+    assert 'Imprevistos' not in conceptos
+    assert len(costos_despues) == 5  # Era 6, ahora 5
+
+
+# ── Tests v1.2 — Pedidos CRUD ──────────────────────────────
+
+def test_registrar_pedido(db_with_data):
+    """Registrar pedido con estado Pendiente y total calculado."""
+    db = db_with_data
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='BRACOR',
+        descripcion='Hoodies x10', unidades=10, costo_unitario=120000,
+        pagado_por='JP', db_path=db,
+    )
+    assert pid is not None
+
+    pedidos = get_pedidos(db_path=db)
+    nuevo = [p for p in pedidos if p['id'] == pid][0]
+    assert nuevo['proveedor'] == 'BRACOR'
+    assert nuevo['unidades'] == 10
+    assert nuevo['total'] == 1200000  # 10 * 120000
+    assert nuevo['estado'] == 'Pendiente'
+
+
+def test_pagar_pedido(db_with_data):
+    """Pagar pedido cambia estado a Pagado y crea gasto."""
+    db = db_with_data
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='AUREN',
+        descripcion='Camisas x5', unidades=5, costo_unitario=37000,
+        db_path=db,
+    )
+
+    # Pagar
+    pagar_pedido(pid, pagado_por='KATHE', db_path=db)
+
+    # Verificar estado
+    pedidos = get_pedidos(db_path=db)
+    pedido = [p for p in pedidos if p['id'] == pid][0]
+    assert pedido['estado'] == 'Pagado'
+    assert pedido['pagado_por'] == 'KATHE'
+
+    # Verificar que se creó el gasto
+    gastos = query("SELECT * FROM gastos WHERE descripcion LIKE ?",
+                   (f"Pedido #{pid}%",), db_path=db)
+    assert len(gastos) == 1
+    assert gastos[0]['monto'] == 185000  # 5 * 37000
+    assert gastos[0]['pagado_por'] == 'KATHE'
+    assert gastos[0]['categoria'] == 'Mercancía'
+
+
+def test_pagar_pedido_ya_pagado_falla(db_with_data):
+    """No se puede pagar un pedido ya pagado."""
+    db = db_with_data
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='BRACOR',
+        descripcion='Test', unidades=5, costo_unitario=50000,
+        db_path=db,
+    )
+    pagar_pedido(pid, pagado_por='JP', db_path=db)
+
+    with pytest.raises(ValueError, match="ya está en estado"):
+        pagar_pedido(pid, pagado_por='JP', db_path=db)
+
+
+def test_recibir_mercancia(db_with_data):
+    """Recibir mercancía cambia estado a Completo y agrega stock."""
+    db = db_with_data
+    stock_antes = get_producto('CAM-TEST-S', db_path=db)['stock']
+
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='AUREN',
+        descripcion='Camisas S', unidades=5, costo_unitario=37000,
+        db_path=db,
+    )
+    pagar_pedido(pid, pagado_por='JP', db_path=db)
+
+    # Recibir y agregar stock
+    recibir_mercancia(pid, [('CAM-TEST-S', 5)], db_path=db)
+
+    # Verificar estado
+    pedidos = get_pedidos(db_path=db)
+    pedido = [p for p in pedidos if p['id'] == pid][0]
+    assert pedido['estado'] == 'Completo'
+
+    # Verificar stock
+    stock_despues = get_producto('CAM-TEST-S', db_path=db)['stock']
+    assert stock_despues == stock_antes + 5
+
+
+def test_recibir_sin_pagar_falla(db_with_data):
+    """No se puede recibir mercancía de un pedido no pagado."""
+    db = db_with_data
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='BRACOR',
+        descripcion='Test', unidades=5, costo_unitario=50000,
+        db_path=db,
+    )
+
+    with pytest.raises(ValueError, match="no está pagado"):
+        recibir_mercancia(pid, [('CAM-TEST-S', 5)], db_path=db)
+
+
+def test_editar_pedido(db_with_data):
+    """Editar pedido recalcula total si cambian unidades/costo."""
+    db = db_with_data
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='BRACOR',
+        descripcion='Orig', unidades=10, costo_unitario=50000,
+        db_path=db,
+    )
+
+    editar_pedido(pid, unidades=20, db_path=db)
+
+    pedidos = get_pedidos(db_path=db)
+    pedido = [p for p in pedidos if p['id'] == pid][0]
+    assert pedido['unidades'] == 20
+    # Total recalculado: 20 * 50000 = 1,000,000
+    assert pedido['total'] == 1000000
+
+
+def test_eliminar_pedido(db_with_data):
+    """Eliminar pedido lo borra de la BD."""
+    db = db_with_data
+    pid = registrar_pedido(
+        fecha_pedido='2026-02-10', proveedor='BRACOR',
+        descripcion='A borrar', unidades=5, costo_unitario=50000,
+        db_path=db,
+    )
+
+    pedidos_antes = get_pedidos(db_path=db)
+    assert any(p['id'] == pid for p in pedidos_antes)
+
+    eliminar_pedido(pid, db_path=db)
+
+    pedidos_despues = get_pedidos(db_path=db)
+    assert not any(p['id'] == pid for p in pedidos_despues)
+
+
+def test_get_pedidos_pendientes(db_with_data):
+    """get_pedidos_pendientes excluye los Completo."""
+    db = db_with_data
+
+    pid1 = registrar_pedido('2026-02-10', 'BRACOR', 'Pendiente', 5, 50000, db_path=db)
+    pid2 = registrar_pedido('2026-02-11', 'AUREN', 'Pagado', 3, 40000, db_path=db)
+    pagar_pedido(pid2, 'JP', db_path=db)
+    pid3 = registrar_pedido('2026-02-12', 'YOUR BRAND', 'Completo', 2, 60000, db_path=db)
+    pagar_pedido(pid3, 'KATHE', db_path=db)
+    recibir_mercancia(pid3, [('CAM-TEST-S', 2)], db_path=db)
+
+    pendientes = get_pedidos_pendientes(db_path=db)
+    ids = [p['id'] for p in pendientes]
+    assert pid1 in ids  # Pendiente
+    assert pid2 in ids  # Pagado (no completo)
+    assert pid3 not in ids  # Completo — excluido
+
+
+def test_deuda_proveedores(db_with_data):
+    """Solo pedidos en estado Pendiente cuentan como deuda."""
+    db = db_with_data
+
+    registrar_pedido('2026-02-10', 'BRACOR', 'Deuda1', 10, 50000, db_path=db)
+    pid_pagado = registrar_pedido('2026-02-11', 'AUREN', 'Pagado', 5, 40000, db_path=db)
+    pagar_pedido(pid_pagado, 'JP', db_path=db)
+
+    deuda = get_total_deuda_proveedores(db_path=db)
+    assert deuda == 500000  # Solo 10 * 50000 del pendiente
+
+
+# ── Tests v1.2 — Venta con descuento y notas ───────────────
+
+def test_venta_con_descuento(db_with_data):
+    """Venta con descuento calcula total correctamente."""
+    db = db_with_data
+    vid = registrar_venta(
+        'CAM-TEST-S', 2, 75000, 'Efectivo',
+        vendedor='JP', descuento=10, db_path=db,
+    )
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert len(ventas) == 1
+    # Total = 75000 * 2 * (1 - 10/100) = 135000
+    assert ventas[0]['total'] == pytest.approx(135000)
+    assert ventas[0]['descuento_pct'] == 10
+
+
+def test_venta_con_notas(db_with_data):
+    """Venta con notas se registra correctamente."""
+    db = db_with_data
+    vid = registrar_venta(
+        'CAM-TEST-S', 1, 75000, 'Efectivo',
+        vendedor='JP', notas='Cliente frecuente', db_path=db,
+    )
+
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (vid,), db_path=db)
+    assert ventas[0]['notas'] == 'Cliente frecuente'
+
+
+def test_ventas_dia(db_with_data):
+    """get_ventas_dia retorna resumen correcto."""
+    db = db_with_data
+    hoy = date.today().isoformat()
+
+    registrar_venta('CAM-TEST-S', 1, 75000, 'Efectivo', vendedor='JP', db_path=db)
+    registrar_venta('HOOD-TEST-L', 1, 200000, 'Transferencia', vendedor='KATHE', db_path=db)
+
+    dia = get_ventas_dia(fecha=hoy, db_path=db)
+    assert dia['total'] == pytest.approx(275000)
+    assert dia['unidades'] == 2
+    assert dia['totales_metodo']['Efectivo'] == pytest.approx(75000)
+    assert dia['totales_metodo']['Transferencia'] == pytest.approx(200000)
+    assert len(dia['ventas']) == 2
