@@ -1,4 +1,4 @@
-"""ORVANN Retail OS — Entry point."""
+"""ORVANN Retail OS — Entry point. v1.2"""
 import streamlit as st
 import os
 import sys
@@ -17,33 +17,61 @@ st.set_page_config(
 
 apply_theme()
 
-# ── Navegación con iconos ──
+# ── Navegación con session_state (TAREA 1 — fix nav bug) ──
 PAGES = {
-    "🛒 Vender": "vender",
-    "📊 Dashboard": "dashboard",
-    "📦 Inventario": "inventario",
-    "📜 Historial": "historial",
-    "⚙️ Admin": "admin",
+    "vender": {"label": "🛒 Vender", "module": "app.pages.vender"},
+    "dashboard": {"label": "📊 Dashboard", "module": "app.pages.dashboard"},
+    "inventario": {"label": "📦 Inventario", "module": "app.pages.inventario"},
+    "historial": {"label": "📜 Historial", "module": "app.pages.historial"},
+    "admin": {"label": "⚙️ Admin", "module": "app.pages.admin"},
 }
 
-# Sidebar
+# Inicializar estado de navegación
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 'vender'
+
+
+def nav_to(page_key):
+    """Callback para cambiar de página sin perder el estado."""
+    st.session_state.current_page = page_key
+
+
+# ── Sidebar ──
 with st.sidebar:
     st.markdown('<div class="orvann-logo">ORVANN</div>', unsafe_allow_html=True)
     st.markdown("---")
-    page = st.radio("Navegación", list(PAGES.keys()), label_visibility="collapsed")
+    for key, info in PAGES.items():
+        is_active = st.session_state.current_page == key
+        btn_type = "primary" if is_active else "secondary"
+        st.button(
+            info['label'],
+            key=f"side_{key}",
+            use_container_width=True,
+            type=btn_type,
+            on_click=nav_to,
+            args=(key,),
+        )
     st.markdown("---")
-    st.caption("ORVANN Retail OS v1.1")
+    st.caption("ORVANN Retail OS v1.2")
     st.caption("Streetwear Premium — Medellín")
 
-# Mobile-friendly tabs at the top
+# ── Mobile-friendly nav tabs at top ──
 cols = st.columns(len(PAGES))
-for i, (name, key) in enumerate(PAGES.items()):
+for i, (key, info) in enumerate(PAGES.items()):
     with cols[i]:
-        if st.button(name, use_container_width=True, key=f"nav_{key}"):
-            page = name
+        is_active = st.session_state.current_page == key
+        btn_type = "primary" if is_active else "secondary"
+        st.button(
+            info['label'],
+            key=f"nav_{key}",
+            use_container_width=True,
+            type=btn_type,
+            on_click=nav_to,
+            args=(key,),
+        )
 
-# Cargar la página seleccionada
-page_key = PAGES.get(page, "vender")
+# ── Cargar la página seleccionada ──
+page_key = st.session_state.current_page
 
 if page_key == "vender":
     from app.pages.vender import render
