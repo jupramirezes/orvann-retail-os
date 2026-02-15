@@ -72,10 +72,8 @@ def render():
         with col4:
             vendedor = st.selectbox("Vendedor", VENDEDORES)
 
-        # Cliente solo si crédito
-        cliente = ""
-        if metodo == 'Crédito':
-            cliente = st.text_input("Nombre del cliente")
+        # Cliente — siempre visible (requerido si crédito)
+        cliente = st.text_input("Cliente (requerido si es crédito)", value="")
 
         # Calcular total para el botón
         total_venta = precio * cantidad
