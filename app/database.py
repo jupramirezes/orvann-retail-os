@@ -95,7 +95,8 @@ def query(sql, params=(), db_path=None):
 
 
 def execute(sql, params=(), db_path=None):
-    """Ejecuta INSERT/UPDATE/DELETE y retorna lastrowid."""
+    """Ejecuta INSERT/UPDATE/DELETE y retorna lastrowid.
+    PostgreSQL: agrega RETURNING id solo si la tabla tiene columna id."""
     conn = get_connection(db_path)
     is_sqlite = _is_sqlite(db_path)
     try:
@@ -106,13 +107,22 @@ def execute(sql, params=(), db_path=None):
             return cursor.lastrowid
         else:
             cursor = conn.cursor()
-            # Para INSERT, agregar RETURNING id si no está presente
+            # Para INSERT en PostgreSQL, agregar RETURNING id solo si es seguro
             if adapted.strip().upper().startswith('INSERT') and 'RETURNING' not in adapted.upper():
-                adapted = adapted.rstrip().rstrip(';') + ' RETURNING id'
-                cursor.execute(adapted, params)
-                result = cursor.fetchone()
-                conn.commit()
-                return result[0] if result else None
+                # Tablas sin columna 'id' (ej: caja_diaria, productos)
+                # No agregar RETURNING id para estas
+                _NO_ID_TABLES = ('caja_diaria', 'productos')
+                has_id = not any(t in adapted.lower() for t in _NO_ID_TABLES)
+                if has_id:
+                    adapted = adapted.rstrip().rstrip(';') + ' RETURNING id'
+                    cursor.execute(adapted, params)
+                    result = cursor.fetchone()
+                    conn.commit()
+                    return result[0] if result else None
+                else:
+                    cursor.execute(adapted, params)
+                    conn.commit()
+                    return cursor.rowcount
             else:
                 cursor.execute(adapted, params)
                 conn.commit()

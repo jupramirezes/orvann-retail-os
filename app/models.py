@@ -1,7 +1,7 @@
-"""Logica de negocio de ORVANN Retail OS. v1.3"""
+"""Logica de negocio de ORVANN Retail OS. v1.4"""
 import math
 from datetime import date, datetime, timedelta
-from app.database import query, execute, get_connection
+from app.database import query, execute, get_connection, adapt_sql, _is_sqlite
 
 SOCIOS = ['JP', 'KATHE', 'ANDRES']
 
@@ -10,10 +10,22 @@ SOCIOS = ['JP', 'KATHE', 'ANDRES']
 
 def registrar_venta(sku, cantidad, precio, metodo_pago, cliente=None,
                     vendedor=None, descuento=0, notas=None, db_path=None):
-    """Registra venta, descuenta stock. Si es crédito, crea registro en creditos_clientes."""
+    """Registra venta, descuenta stock. Si es crédito, crea registro en creditos_clientes.
+    Compatible SQLite y PostgreSQL via adapt_sql()."""
     conn = get_connection(db_path)
+    is_sqlite = _is_sqlite(db_path)
+    _sql = lambda s: adapt_sql(s, db_path)
     try:
-        prod = conn.execute("SELECT stock, nombre FROM productos WHERE sku = ?", (sku,)).fetchone()
+        if is_sqlite:
+            prod = conn.execute(_sql("SELECT stock, nombre FROM productos WHERE sku = ?"), (sku,)).fetchone()
+            prod = dict(prod) if prod else None
+        else:
+            cur = conn.cursor()
+            cur.execute(_sql("SELECT stock, nombre FROM productos WHERE sku = ?"), (sku,))
+            cols = [d[0] for d in cur.description] if cur.description else []
+            row = cur.fetchone()
+            prod = dict(zip(cols, row)) if row else None
+
         if prod is None:
             raise ValueError(f"Producto {sku} no existe")
         if prod['stock'] < cantidad:
@@ -23,21 +35,37 @@ def registrar_venta(sku, cantidad, precio, metodo_pago, cliente=None,
         hoy = date.today().isoformat()
         ahora = datetime.now().strftime('%H:%M:%S')
 
-        cursor = conn.execute("""
+        insert_sql = _sql("""
             INSERT INTO ventas (fecha, hora, sku, cantidad, precio_unitario, descuento_pct, total, metodo_pago, cliente, vendedor, notas)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (hoy, ahora, sku, cantidad, precio, descuento, total, metodo_pago, cliente, vendedor, notas))
+        """)
+        params = (hoy, ahora, sku, cantidad, precio, descuento, total, metodo_pago, cliente, vendedor, notas)
 
-        venta_id = cursor.lastrowid
-        conn.execute("UPDATE productos SET stock = stock - ? WHERE sku = ?", (cantidad, sku))
+        if is_sqlite:
+            cursor = conn.execute(insert_sql, params)
+            venta_id = cursor.lastrowid
+        else:
+            cur = conn.cursor()
+            cur.execute(insert_sql.rstrip().rstrip(';') + ' RETURNING id', params)
+            venta_id = cur.fetchone()[0]
+
+        update_sql = _sql("UPDATE productos SET stock = stock - ? WHERE sku = ?")
+        if is_sqlite:
+            conn.execute(update_sql, (cantidad, sku))
+        else:
+            cur.execute(update_sql, (cantidad, sku))
 
         if metodo_pago == 'Crédito':
             if not cliente:
                 raise ValueError("Venta a crédito requiere nombre de cliente")
-            conn.execute("""
+            credit_sql = _sql("""
                 INSERT INTO creditos_clientes (venta_id, cliente, monto, fecha_credito, pagado, notas)
                 VALUES (?, ?, ?, ?, 0, ?)
-            """, (venta_id, cliente, total, hoy, notas))
+            """)
+            if is_sqlite:
+                conn.execute(credit_sql, (venta_id, cliente, total, hoy, notas))
+            else:
+                cur.execute(credit_sql, (venta_id, cliente, total, hoy, notas))
 
         conn.commit()
         return venta_id
@@ -46,22 +74,21 @@ def registrar_venta(sku, cantidad, precio, metodo_pago, cliente=None,
 
 
 def anular_venta(venta_id, db_path=None):
-    """Revierte una venta: devuelve stock, elimina crédito si existe, borra venta."""
-    conn = get_connection(db_path)
-    try:
-        venta = conn.execute("SELECT * FROM ventas WHERE id = ?", (venta_id,)).fetchone()
-        if venta is None:
-            raise ValueError(f"Venta #{venta_id} no existe")
+    """Revierte una venta: devuelve stock, elimina crédito si existe, borra venta.
+    Compatible SQLite y PostgreSQL."""
+    # Fetch venta using backend-agnostic query()
+    ventas = query("SELECT * FROM ventas WHERE id = ?", (venta_id,), db_path=db_path)
+    if not ventas:
+        raise ValueError(f"Venta #{venta_id} no existe")
+    venta = ventas[0]
 
-        conn.execute("UPDATE productos SET stock = stock + ? WHERE sku = ?",
-                     (venta['cantidad'], venta['sku']))
-        conn.execute("DELETE FROM creditos_clientes WHERE venta_id = ?", (venta_id,))
-        conn.execute("DELETE FROM ventas WHERE id = ?", (venta_id,))
+    # Execute all updates using backend-agnostic execute()
+    execute("UPDATE productos SET stock = stock + ? WHERE sku = ?",
+            (venta['cantidad'], venta['sku']), db_path=db_path)
+    execute("DELETE FROM creditos_clientes WHERE venta_id = ?", (venta_id,), db_path=db_path)
+    execute("DELETE FROM ventas WHERE id = ?", (venta_id,), db_path=db_path)
 
-        conn.commit()
-        return dict(venta)
-    finally:
-        conn.close()
+    return dict(venta)
 
 
 def get_ventas_dia(fecha=None, db_path=None):
@@ -303,24 +330,20 @@ def calcular_liquidacion_socios(db_path=None):
 # ── Caja ─────────────────────────────────────────────────
 
 def abrir_caja(fecha=None, efectivo_inicio=0, db_path=None):
-    """Abre la caja del día con un monto inicial de efectivo."""
+    """Abre la caja del día con un monto inicial de efectivo.
+    Compatible SQLite y PostgreSQL."""
     if fecha is None:
         fecha = date.today().isoformat()
 
-    conn = get_connection(db_path)
-    try:
-        existing = conn.execute("SELECT * FROM caja_diaria WHERE fecha = ?", (fecha,)).fetchone()
-        if existing:
-            conn.execute("UPDATE caja_diaria SET efectivo_inicio = ? WHERE fecha = ?",
-                         (efectivo_inicio, fecha))
-        else:
-            conn.execute("""
-                INSERT INTO caja_diaria (fecha, efectivo_inicio, cerrada)
-                VALUES (?, ?, 0)
-            """, (fecha, efectivo_inicio))
-        conn.commit()
-    finally:
-        conn.close()
+    existing = query("SELECT * FROM caja_diaria WHERE fecha = ?", (fecha,), db_path=db_path)
+    if existing:
+        execute("UPDATE caja_diaria SET efectivo_inicio = ? WHERE fecha = ?",
+                (efectivo_inicio, fecha), db_path=db_path)
+    else:
+        execute("""
+            INSERT INTO caja_diaria (fecha, efectivo_inicio, cerrada)
+            VALUES (?, ?, 0)
+        """, (fecha, efectivo_inicio), db_path=db_path)
 
     return {'fecha': fecha, 'efectivo_inicio': efectivo_inicio}
 
@@ -365,21 +388,23 @@ def get_estado_caja(fecha=None, db_path=None):
 
 
 def cerrar_caja(fecha, efectivo_real, notas=None, db_path=None):
-    """Registra cierre de caja y calcula diferencia."""
+    """Registra cierre de caja y calcula diferencia.
+    Compatible SQLite y PostgreSQL."""
     estado = get_estado_caja(fecha, db_path=db_path)
     diferencia = efectivo_real - estado['efectivo_esperado']
 
-    conn = get_connection(db_path)
-    try:
-        conn.execute("""
+    # Check if caja exists for today
+    existing = query("SELECT * FROM caja_diaria WHERE fecha = ?", (fecha,), db_path=db_path)
+    if existing:
+        execute("""
+            UPDATE caja_diaria SET efectivo_cierre_real = ?, cerrada = 1, notas = ?
+            WHERE fecha = ?
+        """, (efectivo_real, notas, fecha), db_path=db_path)
+    else:
+        execute("""
             INSERT INTO caja_diaria (fecha, efectivo_inicio, efectivo_cierre_real, cerrada, notas)
             VALUES (?, ?, ?, 1, ?)
-            ON CONFLICT(fecha) DO UPDATE SET
-                efectivo_cierre_real = ?, cerrada = 1, notas = ?
-        """, (fecha, estado['efectivo_inicio'], efectivo_real, notas, efectivo_real, notas))
-        conn.commit()
-    finally:
-        conn.close()
+        """, (fecha, estado['efectivo_inicio'], efectivo_real, notas), db_path=db_path)
 
     return {
         'efectivo_esperado': estado['efectivo_esperado'],
