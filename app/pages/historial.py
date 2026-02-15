@@ -1,7 +1,7 @@
-"""Vista Historial — Ventas y gastos históricos con filtros. v1.4"""
+"""Vista Historial — Ventas y gastos históricos con filtros. v1.6"""
 import streamlit as st
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date
 import io
 
 from app.models import get_ventas_rango, get_gastos_rango

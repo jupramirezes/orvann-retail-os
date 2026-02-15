@@ -1,5 +1,5 @@
 """
-Conexión dual SQLite / PostgreSQL para ORVANN Retail OS. v1.2
+Conexión dual SQLite / PostgreSQL para ORVANN Retail OS. v1.6
 
 - Si DATABASE_URL está definida → PostgreSQL (Railway production)
 - Si no → SQLite local (data/orvann.db)

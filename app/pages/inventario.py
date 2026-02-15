@@ -1,4 +1,4 @@
-"""Vista Inventario — Stock con filtros y alertas."""
+"""Vista Inventario — Stock con filtros y alertas. v1.6"""
 import streamlit as st
 import pandas as pd
 

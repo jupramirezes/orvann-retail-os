@@ -1,7 +1,7 @@
-"""Vista POS — Registrar ventas. Mobile-first, mínimo clicks. v1.4"""
+"""Vista POS — Registrar ventas. Mobile-first, mínimo clicks. v1.6"""
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 
 from app.models import (
     registrar_venta, anular_venta, get_ventas_dia, get_productos,

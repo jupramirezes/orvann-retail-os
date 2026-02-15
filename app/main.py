@@ -1,4 +1,4 @@
-"""ORVANN Retail OS — Entry point. v1.5"""
+"""ORVANN Retail OS — Entry point. v1.6"""
 import streamlit as st
 import os
 import sys

@@ -1,4 +1,4 @@
-"""Vista Admin — 6 tabs: Gastos, Socios, Pedidos, Caja, Config, Auditoría. v1.5"""
+"""Vista Admin — 6 tabs: Gastos, Socios, Pedidos, Caja, Config, Auditoría. v1.6"""
 import streamlit as st
 import pandas as pd
 from datetime import date
@@ -15,7 +15,6 @@ from app.models import (
     get_productos, crear_producto, editar_producto, eliminar_producto,
     agregar_stock,
 )
-from app.database import query
 from app.components.helpers import (
     fmt_cop, render_table, CATEGORIAS_GASTO, METODOS_PAGO, VENDEDORES,
 )

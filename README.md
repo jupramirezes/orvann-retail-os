@@ -1,8 +1,8 @@
-# ORVANN Retail OS
+# ORVANN Retail OS v1.6
 
 Sistema POS y control operativo para ORVANN — streetwear premium en Medellín.
 
-Streamlit + SQLite/PostgreSQL + Python puro. Mobile-first, dark theme.
+Streamlit + SQLite/PostgreSQL + Python puro. Mobile-first, tema claro Apple-style.
 
 ## Instalación
 
@@ -36,17 +36,27 @@ streamlit run app/main.py
 python -m pytest tests/ -v
 ```
 
-50 tests: base de datos (5), migración (6), modelos (39).
+67 tests: base de datos (5), migración (6), modelos (56).
 
 ## Vistas
 
 | Vista | Descripción |
 |-------|-------------|
 | **Vender** | POS — abrir caja, vender con descuento/notas, anular, gasto rápido, cerrar caja |
-| **Dashboard** | Punto de equilibrio, semanal, gráficos, utilidad operativa, alertas |
+| **Dashboard** | Punto de equilibrio, semanal, utilidad operativa, alertas |
 | **Inventario** | Stock con filtros, resumen por categoría, agregar stock |
-| **Historial** | Ventas y gastos históricos, filtros por fecha/método/socio, exportar Excel |
-| **Admin** | 7 tabs: gastos CRUD, liquidación socios, caja, créditos, pedidos CRUD, costos fijos, productos |
+| **Historial** | Ventas y gastos históricos, filtros, gráficos Altair, exportar Excel |
+| **Admin** | 6 tabs: Gastos CRUD, Socios (liquidación), Pedidos, Caja/Créditos, Config (costos fijos + productos), Auditoría |
+
+## Hardening (v1.5 / v1.6)
+
+- CHECK constraints en las 7 tablas (SQLite y PostgreSQL)
+- Tablas HTML puras (`render_table()`) — bypass Glide DataGrid canvas
+- `html.escape()` en todas las celdas para prevenir XSS
+- Undo: reabrir caja, editar venta, confirmar anulación
+- Tema claro forzado via `.streamlit/config.toml`
+- Multipage auto-nav oculta (navegación manual con `session_state`)
+- ORVANN.png como favicon
 
 ## Stack
 
@@ -55,7 +65,7 @@ python -m pytest tests/ -v
 - SQLite (desarrollo) / PostgreSQL (producción)
 - psycopg2-binary (PostgreSQL)
 - openpyxl (migración Excel)
-- pandas (tablas y gráficos)
+- pandas + Altair (tablas y gráficos)
 
 ## Deploy (Railway)
 

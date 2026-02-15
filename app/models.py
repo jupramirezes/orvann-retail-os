@@ -1,5 +1,4 @@
-"""Logica de negocio de ORVANN Retail OS. v1.4"""
-import math
+"""Logica de negocio de ORVANN Retail OS. v1.6"""
 from datetime import date, datetime, timedelta
 from app.database import query, execute, get_connection, adapt_sql, _is_sqlite
 

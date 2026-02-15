@@ -1,6 +1,7 @@
 """Utilidades de formateo y helpers para ORVANN Retail OS. v1.6
 Incluye render_table() — HTML puro para tablas (bypass Glide DataGrid canvas).
 """
+import html as _html
 import streamlit as st
 import pandas as pd
 
@@ -12,36 +13,41 @@ def render_table(df, max_height: int = 0):
     canvas y el tema no lo afecta en producción (Railway).
     st.table() no soporta scroll ni height, así que usamos HTML directo.
 
+    Seguridad: todos los valores de celdas y headers se escapan con
+    html.escape() para prevenir inyección HTML/XSS.
+
     Args:
         df: pandas DataFrame (ya formateado para mostrar).
-        max_height: si > 0, limita la altura del contenedor con scroll.
+        max_height: si > 0, limita la altura del contenedor con scroll (px).
     """
     if df is None or df.empty:
         st.info("Sin datos")
         return
 
+    _e = _html.escape  # alias corto para legibilidad
+
     # Generar HTML de la tabla
     height_css = f"max-height: {max_height}px; overflow-y: auto;" if max_height > 0 else ""
-    html = f'<div class="orvann-table-wrap" style="{height_css}">'
-    html += '<table class="orvann-table">'
+    markup = f'<div class="orvann-table-wrap" style="{height_css}">'
+    markup += '<table class="orvann-table">'
 
-    # Headers
-    html += '<thead><tr>'
+    # Headers — escapados
+    markup += '<thead><tr>'
     for col in df.columns:
-        html += f'<th>{col}</th>'
-    html += '</tr></thead>'
+        markup += f'<th>{_e(str(col))}</th>'
+    markup += '</tr></thead>'
 
-    # Body
-    html += '<tbody>'
+    # Body — escapado
+    markup += '<tbody>'
     for _, row in df.iterrows():
-        html += '<tr>'
+        markup += '<tr>'
         for val in row:
-            cell_val = '' if pd.isna(val) else str(val)
-            html += f'<td>{cell_val}</td>'
-        html += '</tr>'
-    html += '</tbody></table></div>'
+            cell_val = '' if pd.isna(val) else _e(str(val))
+            markup += f'<td>{cell_val}</td>'
+        markup += '</tr>'
+    markup += '</tbody></table></div>'
 
-    st.markdown(html, unsafe_allow_html=True)
+    st.markdown(markup, unsafe_allow_html=True)
 
 
 def fmt_cop(valor):

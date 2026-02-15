@@ -1,10 +1,9 @@
-"""Vista Dashboard — Metricas esenciales, PE, resultado mensual. v1.3"""
+"""Vista Dashboard — Metricas esenciales, PE, resultado mensual. v1.6"""
 import streamlit as st
-import pandas as pd
 from datetime import date
 
 from app.models import (
-    get_ventas_dia, get_ventas_mes, get_ventas_semana,
+    get_ventas_mes, get_ventas_semana,
     calcular_punto_equilibrio,
     get_resumen_inventario, get_total_deuda_proveedores,
     get_creditos_pendientes, get_alertas_stock,
