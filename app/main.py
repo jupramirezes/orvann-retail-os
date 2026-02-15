@@ -1,4 +1,4 @@
-"""ORVANN Retail OS — Entry point. v1.2"""
+"""ORVANN Retail OS — Entry point. v1.3"""
 import streamlit as st
 import os
 import sys
@@ -52,7 +52,7 @@ with st.sidebar:
             args=(key,),
         )
     st.markdown("---")
-    st.caption("ORVANN Retail OS v1.2")
+    st.caption("ORVANN Retail OS v1.3")
     st.caption("Streetwear Premium — Medellín")
 
 # ── Mobile-friendly nav tabs at top ──
