@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 
 from app.models import get_productos, get_resumen_inventario, agregar_stock
-from app.components.helpers import fmt_cop, color_stock
+from app.components.helpers import fmt_cop, color_stock, render_table
 
 
 def render():
@@ -57,22 +57,18 @@ def render():
         display['costo'] = display['costo'].apply(fmt_cop)
         display['precio_venta'] = display['precio_venta'].apply(fmt_cop)
 
-        st.dataframe(
-            display.rename(columns={
-                'sku': 'SKU',
-                'nombre': 'Producto',
-                'categoria': 'Categoría',
-                'talla': 'Talla',
-                'color': 'Color',
-                'costo': 'Costo',
-                'precio_venta': 'Precio Venta',
-                'stock': 'Stock',
-                'stock_minimo': 'Mínimo',
-                'estado': 'Estado',
-            }),
-            use_container_width=True,
-            hide_index=True,
-        )
+        render_table(display.rename(columns={
+            'sku': 'SKU',
+            'nombre': 'Producto',
+            'categoria': 'Categoría',
+            'talla': 'Talla',
+            'color': 'Color',
+            'costo': 'Costo',
+            'precio_venta': 'Precio Venta',
+            'stock': 'Stock',
+            'stock_minimo': 'Mínimo',
+            'estado': 'Estado',
+        }))
 
     # ── Resumen por categoría ──
     st.markdown("---")
@@ -83,17 +79,13 @@ def render():
         df_cat = pd.DataFrame(resumen['por_categoria'])
         df_cat['valor_costo'] = df_cat['valor_costo'].apply(lambda x: fmt_cop(x or 0))
         df_cat['valor_venta'] = df_cat['valor_venta'].apply(lambda x: fmt_cop(x or 0))
-        st.dataframe(
-            df_cat.rename(columns={
-                'categoria': 'Categoría',
-                'skus': 'SKUs',
-                'unidades': 'Unidades',
-                'valor_costo': 'Valor Costo',
-                'valor_venta': 'Valor Venta',
-            }),
-            use_container_width=True,
-            hide_index=True,
-        )
+        render_table(df_cat.rename(columns={
+            'categoria': 'Categoría',
+            'skus': 'SKUs',
+            'unidades': 'Unidades',
+            'valor_costo': 'Valor Costo',
+            'valor_venta': 'Valor Venta',
+        }))
 
     # ── Agregar stock ──
     st.markdown("---")

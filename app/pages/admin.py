@@ -17,7 +17,7 @@ from app.models import (
 )
 from app.database import query
 from app.components.helpers import (
-    fmt_cop, CATEGORIAS_GASTO, METODOS_PAGO, VENDEDORES,
+    fmt_cop, render_table, CATEGORIAS_GASTO, METODOS_PAGO, VENDEDORES,
 )
 
 SOCIOS = ['JP', 'KATHE', 'ANDRES']
@@ -88,7 +88,7 @@ def render_gastos():
                 'Desc': (g.get('descripcion') or '')[:30],
                 'Quien': g['pagado_por'],
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        render_table(pd.DataFrame(rows))
         st.caption(f"**Total mes: {fmt_cop(data['total'])}**")
 
         # Edit/delete en expander
@@ -239,7 +239,7 @@ def render_liquidacion():
             'Corresponde': fmt_cop(s['le_corresponde']),
             'Saldo': estado,
         })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    render_table(pd.DataFrame(rows))
 
     with st.expander("Detalle por socio y categoria"):
         for socio in SOCIOS:
@@ -468,7 +468,7 @@ def _render_costos_fijos():
                 'Concepto': c['concepto'],
                 'Monto': fmt_cop(c['monto_mensual']),
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        render_table(pd.DataFrame(rows))
 
         # Edit/delete en expander
         with st.expander("Editar / Eliminar"):
@@ -577,7 +577,7 @@ def _render_productos():
                 'Costo': fmt_cop(p['costo']),
                 'Stock': p['stock'],
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        render_table(pd.DataFrame(rows))
 
         # Edit/delete en expander
         with st.expander("Editar / Eliminar producto"):
@@ -670,14 +670,13 @@ def _audit_gastos():
     dupes = df[df.duplicated(subset=['fecha', 'monto', 'categoria', 'pagado_por'], keep=False)]
     if not dupes.empty:
         st.warning(f"**{len(dupes)} posibles duplicados** (misma fecha+monto+categoría+pagador)")
-        st.dataframe(dupes[['id', 'fecha', 'categoria', 'monto', 'descripcion', 'pagado_por']],
-                      use_container_width=True, hide_index=True)
+        render_table(dupes[['id', 'fecha', 'categoria', 'monto', 'descripcion', 'pagado_por']])
 
     # Tabla completa
     st.markdown("#### Todos los gastos")
     display = df[['id', 'fecha', 'categoria', 'monto', 'descripcion', 'metodo_pago', 'pagado_por', 'es_inversion']].copy()
     display['monto'] = df['monto'].apply(fmt_cop)
-    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+    render_table(display, max_height=500)
 
 
 def _audit_ventas():
@@ -709,14 +708,13 @@ def _audit_ventas():
     dupes = df[df.duplicated(subset=['fecha', 'hora', 'sku', 'total'], keep=False)]
     if not dupes.empty:
         st.warning(f"**{len(dupes)} posibles duplicados** (misma fecha+hora+sku+total)")
-        st.dataframe(dupes[['id', 'fecha', 'hora', 'sku', 'producto_nombre', 'total', 'metodo_pago']],
-                      use_container_width=True, hide_index=True)
+        render_table(dupes[['id', 'fecha', 'hora', 'sku', 'producto_nombre', 'total', 'metodo_pago']])
 
     st.markdown("#### Todas las ventas")
     display = df[['id', 'fecha', 'hora', 'sku', 'producto_nombre', 'cantidad', 'precio_unitario', 'total', 'metodo_pago', 'vendedor', 'cliente']].copy()
     display['total'] = df['total'].apply(fmt_cop)
     display['precio_unitario'] = df['precio_unitario'].apply(fmt_cop)
-    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+    render_table(display, max_height=500)
 
 
 def _audit_productos():
@@ -746,7 +744,7 @@ def _audit_productos():
     display = df[['sku', 'nombre', 'categoria', 'talla', 'color', 'costo', 'precio_venta', 'stock', 'stock_minimo']].copy()
     display['costo'] = df['costo'].apply(fmt_cop)
     display['precio_venta'] = df['precio_venta'].apply(fmt_cop)
-    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+    render_table(display, max_height=500)
 
 
 def _audit_creditos():
@@ -783,7 +781,7 @@ def _audit_creditos():
     display['monto'] = df['monto'].apply(fmt_cop)
     if 'monto_pagado' in display.columns:
         display['monto_pagado'] = df['monto_pagado'].fillna(0).apply(fmt_cop)
-    st.dataframe(display, use_container_width=True, hide_index=True, height=400)
+    render_table(display, max_height=400)
 
 
 def _audit_pedidos():
@@ -811,7 +809,7 @@ def _audit_pedidos():
     display = df[['id', 'fecha_pedido', 'proveedor', 'descripcion', 'unidades', 'costo_unitario', 'total', 'estado', 'pagado_por']].copy()
     display['total'] = df['total'].apply(lambda x: fmt_cop(x or 0))
     display['costo_unitario'] = df['costo_unitario'].apply(lambda x: fmt_cop(x or 0))
-    st.dataframe(display, use_container_width=True, hide_index=True, height=500)
+    render_table(display, max_height=500)
 
 
 def _audit_costos_fijos():
@@ -834,7 +832,7 @@ def _audit_costos_fijos():
     st.markdown("#### Todos los costos fijos")
     display = df[['id', 'concepto', 'monto_mensual', 'activo', 'notas']].copy()
     display['monto_mensual'] = df['monto_mensual'].apply(fmt_cop)
-    st.dataframe(display, use_container_width=True, hide_index=True, height=400)
+    render_table(display, max_height=400)
 
 
 def _audit_caja():
@@ -852,4 +850,4 @@ def _audit_caja():
     for col in ['efectivo_inicio', 'efectivo_cierre_real']:
         if col in display.columns:
             display[col] = df[col].apply(lambda x: fmt_cop(x) if x is not None else '-')
-    st.dataframe(display, use_container_width=True, hide_index=True, height=400)
+    render_table(display, max_height=400)

@@ -1,6 +1,6 @@
-"""CSS tema limpio ORVANN v1.5 — fondo blanco, estilo Apple, mobile-first.
-Fix: inputs legibles, botón dorado, alertas visibles, charts blancos, tablas claras.
-Fix v1.5: texto oscuro en gráficas Altair, tablas Glide DataGrid, st.text().
+"""CSS tema limpio ORVANN v1.6 — fondo blanco, estilo Apple, mobile-first.
+Fix: inputs legibles, botón dorado, alertas visibles, charts blancos.
+Fix v1.6: tablas 100% HTML puro (bypass Glide DataGrid canvas), sidebar fix.
 """
 
 ORVANN_CSS = """
@@ -28,23 +28,6 @@ ORVANN_CSS = """
         --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
         --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
 
-        /* ── Glide DataGrid internal vars — FIX DEFINITIVO tablas canvas ── */
-        --gdg-text-dark: #1D1D1F !important;
-        --gdg-text-medium: #86868B !important;
-        --gdg-text-light: #AEAEB2 !important;
-        --gdg-text-bubble: #1D1D1F !important;
-        --gdg-bg-cell: #FFFFFF !important;
-        --gdg-bg-cell-medium: #FAFAFA !important;
-        --gdg-bg-header: #F5F5F7 !important;
-        --gdg-bg-header-has: #F0F0F2 !important;
-        --gdg-bg-header-hovered: #E8E8ED !important;
-        --gdg-accent-color: #B8860B !important;
-        --gdg-accent-light: rgba(184,134,11,0.1) !important;
-        --gdg-border-color: #E5E5EA !important;
-        --gdg-header-font-style: 600 0.85rem -apple-system, sans-serif !important;
-        --gdg-base-font-style: 0.9rem -apple-system, sans-serif !important;
-        --gdg-font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif !important;
-        --gdg-editor-font-size: 0.9rem !important;
     }
 
     /* ── Base ──────────────────────────────── */
@@ -297,60 +280,56 @@ ORVANN_CSS = """
         color: var(--text-primary) !important;
     }
 
-    /* ── 1.5 TABLAS: HEADERS CLAROS, ZEBRA STRIPING ── */
-    .stDataFrame {
+    /* ── 1.5 TABLAS HTML PURAS (render_table) — FIX v1.6 ── */
+    .orvann-table-wrap {
         border-radius: 12px !important;
-        overflow: hidden !important;
+        overflow: auto !important;
         box-shadow: var(--shadow-sm) !important;
+        background-color: var(--bg-card) !important;
+        margin-bottom: 1rem !important;
     }
-    .stDataFrame thead th,
-    [data-testid="stDataFrame"] thead th {
+    .orvann-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 0.9rem !important;
+        font-family: -apple-system, system-ui, sans-serif !important;
+    }
+    .orvann-table thead th {
         background-color: var(--bg-secondary) !important;
         color: var(--text-primary) !important;
         font-weight: 600 !important;
-        font-size: 0.85rem !important;
+        font-size: 0.8rem !important;
         text-transform: uppercase !important;
         letter-spacing: 0.3px !important;
+        padding: 10px 12px !important;
+        text-align: left !important;
+        border-bottom: 2px solid var(--border) !important;
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 1 !important;
+        white-space: nowrap !important;
     }
-    .stDataFrame tbody td,
-    [data-testid="stDataFrame"] tbody td {
-        background-color: var(--bg-card) !important;
+    .orvann-table tbody td {
         color: var(--text-primary) !important;
-        border-color: var(--border-light) !important;
+        padding: 8px 12px !important;
+        border-bottom: 1px solid var(--border-light) !important;
+        white-space: nowrap !important;
     }
-    [data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+    .orvann-table tbody tr:nth-child(even) {
         background-color: #FAFAFA !important;
     }
-    .stDataFrame tbody tr:hover td,
-    [data-testid="stDataFrame"] tbody tr:hover td {
+    .orvann-table tbody tr:hover {
         background-color: var(--bg-secondary) !important;
     }
-    /* Glide Data Grid (Streamlit's actual table renderer) — FIX v1.5 */
-    [data-testid="stDataFrame"] [data-testid="glideDataEditor"],
-    .dvn-scroller {
-        background-color: var(--bg-card) !important;
-    }
-    /* Forzar texto oscuro en todas las capas del DataGrid */
-    [data-testid="stDataFrame"] *,
-    [data-testid="stDataFrame"] div,
-    [data-testid="stDataFrame"] span {
-        color: var(--text-primary) !important;
-    }
-    /* Header del DataGrid */
-    [data-testid="stDataFrame"] [role="columnheader"],
-    [data-testid="stDataFrame"] .gdg-header {
-        color: var(--text-primary) !important;
-        background-color: var(--bg-secondary) !important;
-    }
-    /* Celdas del DataGrid */
-    [data-testid="stDataFrame"] [role="gridcell"],
-    [data-testid="stDataFrame"] .gdg-cell {
-        color: var(--text-primary) !important;
-    }
-    /* Toolbar del DataFrame (filas/columnas counter) */
-    [data-testid="stDataFrame"] [data-testid="stDataFrameResizeHandle"],
-    [data-testid="stElementToolbar"] {
-        color: var(--text-secondary) !important;
+    /* Mobile: allow horizontal scroll */
+    @media (max-width: 768px) {
+        .orvann-table {
+            font-size: 0.8rem !important;
+        }
+        .orvann-table thead th,
+        .orvann-table tbody td {
+            padding: 6px 8px !important;
+        }
     }
 
     /* ── 1.6 TABS: MAS GRANDES EN MOBILE ── */
@@ -429,12 +408,18 @@ ORVANN_CSS = """
         }
     }
 
-    /* ── Hide Streamlit extras ────────────── */
+    /* ── Hide Streamlit extras + multipage auto-nav ── */
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
     header[data-testid="stHeader"] {
         background-color: var(--bg-card) !important;
         border-bottom: 1px solid var(--border) !important;
+    }
+    /* Ocultar nav multipage auto-detectada por Streamlit */
+    [data-testid="stSidebarNav"],
+    section[data-testid="stSidebar"] nav,
+    section[data-testid="stSidebar"] ul {
+        display: none !important;
     }
 
     /* ── Stock colors ────────────────────── */

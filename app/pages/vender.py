@@ -7,7 +7,7 @@ from app.models import (
     registrar_venta, anular_venta, get_ventas_dia, get_productos,
     registrar_gasto, get_estado_caja, abrir_caja, cerrar_caja, reabrir_caja,
 )
-from app.components.helpers import fmt_cop, METODOS_PAGO, VENDEDORES, CATEGORIAS_GASTO
+from app.components.helpers import fmt_cop, render_table, METODOS_PAGO, VENDEDORES, CATEGORIAS_GASTO
 
 
 def render():
@@ -123,7 +123,7 @@ def render():
                 'Quien': v.get('vendedor') or 'JP',
             })
         df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        render_table(df)
 
         # Resumen por método
         met_parts = []

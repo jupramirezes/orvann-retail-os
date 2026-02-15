@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import io
 
 from app.models import get_ventas_rango, get_gastos_rango
-from app.components.helpers import fmt_cop
+from app.components.helpers import fmt_cop, render_table
 
 
 def render():
@@ -100,15 +100,12 @@ def render_historial_ventas():
     if 'producto_nombre' in display.columns:
         display['producto_nombre'] = display['producto_nombre'].astype(str).str[:25]
 
-    st.dataframe(
-        display.rename(columns={
-            'fecha': 'Fecha', 'hora': 'Hora',
-            'producto_nombre': 'Producto', 'cantidad': 'Cant.',
-            'total': 'Total',
-            'metodo_pago': 'Método', 'vendedor': 'Vendedor', 'cliente': 'Cliente',
-        }),
-        use_container_width=True, hide_index=True,
-    )
+    render_table(display.rename(columns={
+        'fecha': 'Fecha', 'hora': 'Hora',
+        'producto_nombre': 'Producto', 'cantidad': 'Cant.',
+        'total': 'Total',
+        'metodo_pago': 'Método', 'vendedor': 'Vendedor', 'cliente': 'Cliente',
+    }))
 
     # Gráfico Altair — ventas por día con colores ORVANN
     if len(filtered) > 1:
@@ -237,14 +234,11 @@ def render_historial_gastos():
     if 'fecha' in display.columns:
         display['fecha'] = pd.to_datetime(filtered['fecha']).dt.strftime('%d %b')
 
-    st.dataframe(
-        display.rename(columns={
-            'fecha': 'Fecha', 'categoria': 'Categoría', 'monto': 'Monto',
-            'descripcion': 'Descripción', 'pagado_por': 'Pagado por',
-            'metodo_pago': 'Método',
-        }),
-        use_container_width=True, hide_index=True,
-    )
+    render_table(display.rename(columns={
+        'fecha': 'Fecha', 'categoria': 'Categoría', 'monto': 'Monto',
+        'descripcion': 'Descripción', 'pagado_por': 'Pagado por',
+        'metodo_pago': 'Método',
+    }))
 
     # Exportar a Excel
     st.markdown("---")

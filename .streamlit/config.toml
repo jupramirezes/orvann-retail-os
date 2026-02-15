@@ -1,5 +1,5 @@
 [theme]
-# ORVANN tema claro — forzar texto oscuro en Glide DataGrid (canvas)
+# ORVANN tema claro v1.6
 base = "light"
 primaryColor = "#B8860B"
 backgroundColor = "#FFFFFF"
@@ -9,6 +9,10 @@ font = "sans serif"
 
 [server]
 headless = true
+
+[pages]
+# Desactivar multipage auto-detect (usamos nav manual con session_state)
+show_sidebar_navigation = false
 
 [browser]
 gatherUsageStats = false
