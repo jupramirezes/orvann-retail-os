@@ -1,1 +1,1 @@
-web: python scripts/setup_railway.py && streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+web: python scripts/setup_railway.py && streamlit run app/main.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --theme.base light --theme.primaryColor "#B8860B" --theme.backgroundColor "#FFFFFF" --theme.secondaryBackgroundColor "#F5F5F7" --theme.textColor "#1D1D1F"

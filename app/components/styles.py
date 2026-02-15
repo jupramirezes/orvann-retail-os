@@ -27,6 +27,24 @@ ORVANN_CSS = """
         --border-light: #F2F2F7;
         --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
         --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+
+        /* ── Glide DataGrid internal vars — FIX DEFINITIVO tablas canvas ── */
+        --gdg-text-dark: #1D1D1F !important;
+        --gdg-text-medium: #86868B !important;
+        --gdg-text-light: #AEAEB2 !important;
+        --gdg-text-bubble: #1D1D1F !important;
+        --gdg-bg-cell: #FFFFFF !important;
+        --gdg-bg-cell-medium: #FAFAFA !important;
+        --gdg-bg-header: #F5F5F7 !important;
+        --gdg-bg-header-has: #F0F0F2 !important;
+        --gdg-bg-header-hovered: #E8E8ED !important;
+        --gdg-accent-color: #B8860B !important;
+        --gdg-accent-light: rgba(184,134,11,0.1) !important;
+        --gdg-border-color: #E5E5EA !important;
+        --gdg-header-font-style: 600 0.85rem -apple-system, sans-serif !important;
+        --gdg-base-font-style: 0.9rem -apple-system, sans-serif !important;
+        --gdg-font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif !important;
+        --gdg-editor-font-size: 0.9rem !important;
     }
 
     /* ── Base ──────────────────────────────── */
@@ -257,7 +275,12 @@ ORVANN_CSS = """
         padding: 8px !important;
         box-shadow: var(--shadow-sm) !important;
     }
-    canvas {
+    /* canvas background solo para charts, NO para DataGrid */
+    .stAltairChart canvas,
+    .stBarChart canvas,
+    .stPlotlyChart canvas,
+    [data-testid="stArrowVegaLiteChart"] canvas,
+    [data-testid="stVegaLiteChart"] canvas {
         background-color: var(--bg-card) !important;
     }
     /* FIX v1.5: Texto SVG dentro de gráficas Altair/Vega */
