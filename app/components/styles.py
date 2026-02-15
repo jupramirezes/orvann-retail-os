@@ -1,4 +1,6 @@
-"""CSS tema limpio ORVANN v1.3 — fondo blanco, estilo Apple, mobile-first."""
+"""CSS tema limpio ORVANN v1.4 — fondo blanco, estilo Apple, mobile-first.
+Fix: inputs legibles, botón dorado, alertas visibles, charts blancos, tablas claras.
+"""
 
 ORVANN_CSS = """
 <style>
@@ -14,6 +16,7 @@ ORVANN_CSS = """
         --text-muted: #AEAEB2;
         --accent: #B8860B;
         --accent-light: #DAA520;
+        --accent-hover: #966F09;
         --accent-bg: #FFF8E7;
         --success: #34C759;
         --danger: #FF3B30;
@@ -30,6 +33,18 @@ ORVANN_CSS = """
         background-color: var(--bg-secondary) !important;
         color: var(--text-primary) !important;
         font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif !important;
+        font-size: 16px !important;
+    }
+
+    /* ── Texto base más legible ────────────── */
+    .stMarkdown p, .stMarkdown li {
+        font-size: 1rem !important;
+        line-height: 1.5 !important;
+        color: var(--text-primary) !important;
+    }
+    .stCaption, small {
+        color: var(--text-secondary) !important;
+        font-size: 0.85rem !important;
     }
 
     /* ── Sidebar ──────────────────────────── */
@@ -79,7 +94,8 @@ ORVANN_CSS = """
         font-weight: 700 !important;
     }
 
-    /* ── Inputs & Selects ─────────────────── */
+    /* ── 1.1 INPUTS: FONDO CLARO, TEXTO NEGRO — FIX CRITICO ── */
+    /* Contenedores de inputs */
     .stTextInput > div > div,
     .stNumberInput > div > div,
     .stSelectbox > div > div,
@@ -90,37 +106,86 @@ ORVANN_CSS = """
         color: var(--text-primary) !important;
         border-radius: 8px !important;
     }
+
+    /* Inputs directos — el fix real para fondo negro */
+    input,
+    textarea,
     .stTextInput input,
-    .stNumberInput input {
+    .stNumberInput input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stTextInput"] input,
+    [data-baseweb="input"] input {
+        background-color: var(--bg-input) !important;
         color: var(--text-primary) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 8px !important;
         font-size: 1rem !important;
+        -webkit-text-fill-color: var(--text-primary) !important;
     }
+
+    /* Selectbox y dropdown */
+    [data-baseweb="select"] > div,
+    .stSelectbox > div > div > div {
+        background-color: var(--bg-input) !important;
+        color: var(--text-primary) !important;
+    }
+    [data-baseweb="select"] [data-baseweb="popover"],
+    [role="listbox"],
+    [role="option"] {
+        background-color: var(--bg-card) !important;
+        color: var(--text-primary) !important;
+    }
+    [role="option"]:hover {
+        background-color: var(--bg-hover) !important;
+    }
+
+    /* Number input buttons (+/-) */
+    .stNumberInput button,
+    [data-testid="stNumberInput"] button {
+        background-color: var(--bg-hover) !important;
+        color: var(--text-primary) !important;
+        border: none !important;
+    }
+
+    /* Labels de form más visibles */
     .stTextInput label,
     .stNumberInput label,
     .stSelectbox label,
-    .stDateInput label {
-        color: var(--text-secondary) !important;
-        font-weight: 500 !important;
+    .stDateInput label,
+    .stMultiSelect label {
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        color: var(--text-primary) !important;
     }
 
-    /* ── Buttons ──────────────────────────── */
+    /* ── 1.2 BOTON PRIMARIO: DORADO ORVANN — FIX CRITICO ── */
     .stButton > button {
         border-radius: 10px !important;
         font-weight: 600 !important;
         padding: 0.6rem 1.2rem !important;
         transition: all 0.15s ease !important;
     }
+    /* Primario y form submit — DORADO */
     .stButton > button[kind="primary"],
-    .stButton > button:not([kind]) {
+    .stButton > button:not([kind]),
+    button[data-testid="stFormSubmitButton"],
+    .stFormSubmitButton > button,
+    [data-testid="stFormSubmitButton"] > button {
         background-color: var(--accent) !important;
         color: white !important;
         border: none !important;
+        font-weight: 700 !important;
+        font-size: 1rem !important;
+        border-radius: 10px !important;
     }
     .stButton > button[kind="primary"]:hover,
-    .stButton > button:not([kind]):hover {
-        background-color: var(--accent-light) !important;
+    .stButton > button:not([kind]):hover,
+    .stFormSubmitButton > button:hover,
+    [data-testid="stFormSubmitButton"] > button:hover {
+        background-color: var(--accent-hover) !important;
         color: white !important;
     }
+    /* Secundario */
     .stButton > button[kind="secondary"] {
         background-color: var(--bg-secondary) !important;
         color: var(--text-primary) !important;
@@ -130,30 +195,97 @@ ORVANN_CSS = """
         background-color: var(--bg-hover) !important;
     }
 
-    /* ── Tables / Dataframes ──────────────── */
+    /* ── 1.3 ALERTAS: TEXTO OSCURO SIEMPRE — FIX CRITICO ── */
+    .stAlert,
+    [data-testid="stAlert"] {
+        border-radius: 10px !important;
+    }
+    .stAlert p, .stAlert span, .stAlert div, .stAlert strong,
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] span,
+    [data-testid="stAlert"] div,
+    [data-testid="stAlert"] strong,
+    [data-testid="stAlert"] a {
+        color: var(--text-primary) !important;
+    }
+    /* Fondos pastel claros */
+    .stSuccess, div[data-testid="stAlert"].stSuccess {
+        background-color: #F0FFF4 !important;
+        border: 1px solid var(--success) !important;
+        border-radius: 10px !important;
+    }
+    .stError, div[data-testid="stAlert"].stError {
+        background-color: #FFF5F5 !important;
+        border: 1px solid var(--danger) !important;
+        border-radius: 10px !important;
+    }
+    .stWarning, div[data-testid="stAlert"].stWarning {
+        background-color: #FFFBF0 !important;
+        border: 1px solid var(--warning) !important;
+        border-radius: 10px !important;
+    }
+    .stInfo, div[data-testid="stAlert"].stInfo {
+        background-color: #F0F8FF !important;
+        border: 1px solid var(--info) !important;
+        border-radius: 10px !important;
+    }
+    /* Forzar texto oscuro en todas las variantes de alerta */
+    [data-baseweb*="notification"] div,
+    [data-baseweb*="notification"] p,
+    [data-baseweb*="notification"] span {
+        color: var(--text-primary) !important;
+    }
+
+    /* ── 1.4 CHARTS: FONDO BLANCO — FIX ── */
+    .stPlotlyChart,
+    .stAltairChart,
+    .stBarChart,
+    [data-testid="stArrowVegaLiteChart"],
+    [data-testid="stVegaLiteChart"] {
+        background-color: var(--bg-card) !important;
+        border-radius: 12px !important;
+        padding: 8px !important;
+        box-shadow: var(--shadow-sm) !important;
+    }
+    canvas {
+        background-color: var(--bg-card) !important;
+    }
+
+    /* ── 1.5 TABLAS: HEADERS CLAROS, ZEBRA STRIPING ── */
     .stDataFrame {
         border-radius: 12px !important;
         overflow: hidden !important;
         box-shadow: var(--shadow-sm) !important;
     }
-    .stDataFrame thead th {
+    .stDataFrame thead th,
+    [data-testid="stDataFrame"] thead th {
         background-color: var(--bg-secondary) !important;
-        color: var(--text-secondary) !important;
+        color: var(--text-primary) !important;
         font-weight: 600 !important;
         font-size: 0.85rem !important;
         text-transform: uppercase !important;
         letter-spacing: 0.3px !important;
     }
-    .stDataFrame tbody td {
+    .stDataFrame tbody td,
+    [data-testid="stDataFrame"] tbody td {
         background-color: var(--bg-card) !important;
         color: var(--text-primary) !important;
         border-color: var(--border-light) !important;
     }
-    .stDataFrame tbody tr:hover td {
+    [data-testid="stDataFrame"] tbody tr:nth-child(even) td {
+        background-color: #FAFAFA !important;
+    }
+    .stDataFrame tbody tr:hover td,
+    [data-testid="stDataFrame"] tbody tr:hover td {
         background-color: var(--bg-secondary) !important;
     }
+    /* Glide Data Grid (Streamlit's actual table renderer) */
+    [data-testid="stDataFrame"] [data-testid="glideDataEditor"],
+    .dvn-scroller {
+        background-color: var(--bg-card) !important;
+    }
 
-    /* ── Tabs ─────────────────────────────── */
+    /* ── 1.6 TABS: MAS GRANDES EN MOBILE ── */
     .stTabs [data-baseweb="tab-list"] {
         gap: 0 !important;
         background-color: var(--bg-card) !important;
@@ -166,18 +298,13 @@ ORVANN_CSS = """
         color: var(--text-secondary) !important;
         border-radius: 8px !important;
         padding: 8px 16px !important;
-        font-size: 0.9rem !important;
-        font-weight: 500 !important;
+        font-size: 0.95rem !important;
+        font-weight: 600 !important;
     }
     .stTabs [aria-selected="true"] {
         background-color: var(--accent) !important;
         color: white !important;
         font-weight: 600 !important;
-    }
-
-    /* ── Alerts ───────────────────────────── */
-    .stAlert {
-        border-radius: 10px !important;
     }
 
     /* ── Progress bar ─────────────────────── */
@@ -214,14 +341,6 @@ ORVANN_CSS = """
         border-color: var(--border) !important;
     }
 
-    /* ── Charts ───────────────────────────── */
-    .stPlotlyChart, .stAltairChart, .stBarChart {
-        background-color: var(--bg-card) !important;
-        border-radius: 12px !important;
-        padding: 8px !important;
-        box-shadow: var(--shadow-sm) !important;
-    }
-
     /* ── Mobile adjustments ───────────────── */
     @media (max-width: 768px) {
         .stApp > header { display: none !important; }
@@ -238,7 +357,7 @@ ORVANN_CSS = """
         }
         .stTabs [data-baseweb="tab"] {
             padding: 6px 10px !important;
-            font-size: 0.8rem !important;
+            font-size: 0.85rem !important;
         }
     }
 
@@ -265,32 +384,20 @@ ORVANN_CSS = """
         text-align: center !important;
         padding: 0.5rem 0 !important;
     }
+    .orvann-header {
+        font-family: -apple-system, system-ui, sans-serif !important;
+        font-size: 1.4rem !important;
+        font-weight: 900 !important;
+        letter-spacing: 6px !important;
+        color: var(--text-primary) !important;
+        text-align: center !important;
+        padding: 8px 0 !important;
+        margin-bottom: 8px !important;
+    }
 
     /* ── Nav buttons ─────────────────────── */
     div[data-testid="stHorizontalBlock"] .stButton > button {
         font-size: 0.85rem !important;
-    }
-
-    /* ── Success/error toasts ────────────── */
-    .stSuccess {
-        background-color: #F0FFF4 !important;
-        border: 1px solid var(--success) !important;
-        border-radius: 10px !important;
-    }
-    .stError {
-        background-color: #FFF5F5 !important;
-        border: 1px solid var(--danger) !important;
-        border-radius: 10px !important;
-    }
-    .stWarning {
-        background-color: #FFFBF0 !important;
-        border: 1px solid var(--warning) !important;
-        border-radius: 10px !important;
-    }
-    .stInfo {
-        background-color: #F0F8FF !important;
-        border: 1px solid var(--info) !important;
-        border-radius: 10px !important;
     }
 </style>
 """

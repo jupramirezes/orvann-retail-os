@@ -1,4 +1,4 @@
-"""ORVANN Retail OS — Entry point. v1.3"""
+"""ORVANN Retail OS — Entry point. v1.4"""
 import streamlit as st
 import os
 import sys
@@ -52,8 +52,11 @@ with st.sidebar:
             args=(key,),
         )
     st.markdown("---")
-    st.caption("ORVANN Retail OS v1.3")
+    st.caption("ORVANN Retail OS v1.4")
     st.caption("Streetwear Premium — Medellín")
+
+# ── Logo ORVANN en header ──
+st.markdown('<div class="orvann-header">ORVANN</div>', unsafe_allow_html=True)
 
 # ── Mobile-friendly nav tabs at top ──
 cols = st.columns(len(PAGES))
